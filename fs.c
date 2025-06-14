@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <fuse.h>
 #include <errno.h>
 
@@ -71,8 +70,9 @@ int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fu
         return -EISDIR;
 
     Chanfile *file = (Chanfile *)fs_obj->obj;
-    char *contents = file->contents;
     off_t file_size = file->size;
+
+    char *contents;
 
     if (offset > file_size) 
         return -EINVAL;

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fuse.h>
+#include <curl/curl.h>
 
 #include "include/fs.h"
 
@@ -14,7 +15,14 @@ static struct fuse_operations operations = {
 };
 
 int main(int argc, char *argv[])
-{
+{   
+    curl_global_init(CURL_GLOBAL_ALL);
+
     root = generate_fs();
-    return fuse_main(argc, argv, &operations, NULL);
+    int fuse_res = fuse_main(argc, argv, &operations, NULL);
+
+    curl_global_cleanup();
+
+
+    return fuse_res;
 }

@@ -6,20 +6,31 @@
 #include <unistd.h>
 
 #include "include/fs_utils.h"
+#include "include/chan_parse.h"
 
 ChanFSObj *generate_fs()
 {
-    ParseResults *results = parse_chan();
-    ChanFSObj *root = init_dir("/", NULL, results->num_of_threads);
+    Board *results = parse_board("lit");
+    ChanFSObj *root_fs_obj = init_dir("/", NULL, results->num_of_threads, time(NULL));
     
+    Chandir *root_dir = root_fs_obj->obj;
     for (int i = 0; i < results->num_of_threads; i++) {
-        char *title = truncate_name(results->thread_titles[i]);
+        Post *thread = results->threads[i];
+        char *title = truncate_name(thread->sub);
         sanitize_name(title);
-        add_child(root->obj, init_file(title, 1024, root));
+        add_child(root_dir, init_dir(title, root_fs_obj, 2, thread->timestamp));
     }
 
-    free_parse_results(results);
-    return root;
+    ChanFSObj **thread_dir_list = root_dir->children;
+    for (int j = 0; j < results->num_of_threads; j++) {
+        Post *thread = results->threads[j];
+        Chandir *thread_dir = thread_dir_list[j]->obj;
+        add_child(thread_dir, init_file("Thread.txt", 0, thread_dir_list[j], thread->timestamp));
+        add_child(thread_dir, init_file("File", 0, thread_dir_list[j], thread->timestamp)); //Picture and file info.
+    }
+
+    free_board_parse_results(results);
+    return root_fs_obj;
 
 }
 
@@ -46,7 +57,7 @@ static void add_child(Chandir *dir, ChanFSObj *child)
 }
     
        
-static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, int num_of_children)
+static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, int num_of_children, time_t time)
 {
 
     ChanFSObj *new_fs_obj = (ChanFSObj *) malloc(sizeof(ChanFSObj));
@@ -67,7 +78,7 @@ static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, int num_of_childre
     new_fs_obj->mode = new_fs_obj->base_mode | DIRPERMS;
     new_fs_obj->name = name;
     new_fs_obj->nlink = 2;
-    new_fs_obj->time = time(NULL);
+    new_fs_obj->time = time;
     new_fs_obj->uid = getuid();
     new_fs_obj->gid = getgid();
     dir->num_of_children = num_of_children;
@@ -77,7 +88,7 @@ static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, int num_of_childre
     return new_fs_obj;
 }
 
-static ChanFSObj *init_file(char *name, off_t size, ChanFSObj *curr_dir)
+static ChanFSObj *init_file(char *name, off_t size, ChanFSObj *curr_dir, time_t time)
 {
 
     ChanFSObj *new_fs_obj = (ChanFSObj *) malloc(sizeof(ChanFSObj));
@@ -97,25 +108,14 @@ static ChanFSObj *init_file(char *name, off_t size, ChanFSObj *curr_dir)
     new_fs_obj->mode = new_fs_obj->base_mode | FILEPERMS;
     new_fs_obj->name = name;
     new_fs_obj->nlink = 1;
-    new_fs_obj->time = time(NULL);
+    new_fs_obj->time = time;
     new_fs_obj->uid = getuid();
     new_fs_obj->gid = getgid();
 
     file->size = size;
     file->curr_dir = curr_dir;
-    file->contents = ""; //Just set files to be empty for now.
 
     return new_fs_obj;
-}
-
-static void free_parse_results(ParseResults *results)
-{
-    /* Free up parse results */
-    for (int j = 0; j < results->num_of_threads; j++) {
-        free(results->thread_titles[j]);
-    }
-    free(results->thread_titles);
-    free(results);
 }
 
 
