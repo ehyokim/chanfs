@@ -5,8 +5,10 @@
 #include <fuse.h>
 #include <errno.h>
 
+#include "include/fs_utils.h"
 #include "include/fs.h"
 
+static ChanFSObj *traverse(const char *path);
 extern ChanFSObj *root;
 
 int do_getattr(const char *path, struct stat *st)
@@ -57,7 +59,9 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t off
 
     return 0;
 }
-
+/* Idea: Maybe keep a hash table threads hashed or indiced by their post_no. then retriving any thread and its contents will be loaded into memory for the next time
+         we need to access them. This could be useful for generating reply subdirectories dynamically without having to retrieve it every time.
+*/
 int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     //printf("readfile called with path: %s\n", path);
@@ -72,7 +76,7 @@ int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fu
     Chanfile *file = (Chanfile *)fs_obj->obj;
     off_t file_size = file->size;
 
-    char *contents;
+    char *contents = file->contents;
 
     if (offset > file_size) 
         return -EINVAL;

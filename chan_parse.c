@@ -5,6 +5,14 @@
 
 #include "include/chan_parse.h"
 
+static int find_total_num_threads(cJSON *catalog);
+static int find_total_num_replies(cJSON *thread);
+static char *constr_catalog_url(char *chan_url, char *board);
+static char *constr_thread_url(char *chan_url, char *board, int thread_op_no);
+static Post *parse_post_json_object(cJSON *post_json_obj);
+static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp);
+static char *retrieve_webpage_text(char *url);
+
 struct MemoryStruct {
   char *memory;
   size_t size;
@@ -63,111 +71,160 @@ static char *retrieve_webpage_text(char *url)
     return (char *)chunk.memory;
 }
 
-
-
-
-Thread *parse_thread(char *board, unsigned int thread_op_no)
+//Fix error handling here. 
+Thread *parse_thread(char *board, int thread_op_no)
 {
 
     char *thread_url = constr_thread_url("https://lainchan.org", board, thread_op_no);
     char *webpage_text = retrieve_webpage_text(thread_url);
     cJSON *thread = cJSON_Parse(webpage_text);
 
+    if (thread == NULL) {
+        fprintf(stderr, "Could not allocate thread JSON struct.\n");
+        return NULL;
+    }
+
     Thread *results = (Thread *) malloc(sizeof(Thread));
     int total_num_replies = find_total_num_replies(thread);
     results->num_of_replies = total_num_replies;
     results->posts = (Post **) malloc((total_num_replies + 1) * sizeof(Post *));
 
+    Post **thread_replies = results->posts;
+    
+    cJSON *replies = cJSON_GetObjectItemCaseSensitive(thread, "posts");
+    if (!cJSON_IsArray(replies)) {
+        fprintf(stderr, "Could not find post array.\n");
+        return NULL;
+    }
+    
+    cJSON *post_json_obj = NULL;
+    cJSON_ArrayForEach(post_json_obj, replies) 
+    {
+         *thread_replies = parse_post_json_object(post_json_obj);
+        thread_replies++;
+    }
+
+    *thread_replies = NULL;  //End of pointer array marker.
+
     cJSON_Delete(thread);
     free(webpage_text);
     free(thread_url);
 
-    return NULL; //To be filled out
+    return results;
 }
 
-
-/*TODO: Find a way to nicely set up the curl environment and then cleanly free everything when you are done. */
-//Fix this to reflect Post struct.
 Board *parse_board(char *board)
 {
 
-        char *catalog_url = constr_catalog_url("https://lainchan.org", board);
-        char *webpage_text = retrieve_webpage_text(catalog_url);
-        cJSON *catalog = cJSON_Parse(webpage_text);
+    char *catalog_url = constr_catalog_url("https://lainchan.org", board);
+    char *webpage_text = retrieve_webpage_text(catalog_url);
+    cJSON *catalog = cJSON_Parse(webpage_text);
 
-        Board *results = (Board *) malloc(sizeof(Board));
-        int total_num_threads = find_total_num_threads(catalog);
-        results->num_of_threads = total_num_threads;
-        results->threads = (Post **) malloc((total_num_threads + 1) * sizeof(Post *));
+    Board *results = (Board *) malloc(sizeof(Board));
+    int total_num_threads = find_total_num_threads(catalog);
+    results->num_of_threads = total_num_threads;
+    results->threads = (Post **) malloc((total_num_threads + 1) * sizeof(Post *));
 
-        if(catalog == NULL) {
-            fprintf(stderr, "Could not allocate catalog JSON struct.\n");
+    if(catalog == NULL) {
+        fprintf(stderr, "Could not allocate catalog JSON struct.\n");
+        return NULL;
+    }
+    
+    Post **thread_op_posts = results->threads;
+
+    cJSON *threads = NULL;
+    cJSON_ArrayForEach(threads, catalog)
+    {
+        cJSON *thread_list = cJSON_GetObjectItemCaseSensitive(threads, "threads");
+
+        if (!cJSON_IsArray(thread_list)) {
+            fprintf(stderr, "Could not find thread array.\n");
             return NULL;
         }
         
-        Post **thread_op_posts = results->threads;
-        int thread_idx = 0;
-
-        cJSON *threads = NULL;
-        cJSON_ArrayForEach(threads, catalog)
+        cJSON *thread_op = NULL;
+        cJSON_ArrayForEach(thread_op, thread_list)
         {
-            cJSON *thread_list = cJSON_GetObjectItemCaseSensitive(threads, "threads");
-
-            if (!cJSON_IsArray(thread_list)) {
-                fprintf(stderr, "Could not find thread array.\n");
-                return NULL;
-            }
-
-            cJSON *thread = NULL;
-            char *subject = NULL;
-            cJSON_ArrayForEach(thread, thread_list)
-            {
-                //TODO: fill out error checking for this.
-                Post *thread_op = thread_op_posts[thread_idx] = (Post *) calloc(1, sizeof(Post)); 
-                
-                //Fill out the subject field
-                cJSON *sub = cJSON_GetObjectItemCaseSensitive(thread, "sub");
-                if (cJSON_IsString(sub)) 
-                    subject = sub->valuestring;
-                else {
-                    sub = cJSON_GetObjectItemCaseSensitive(thread, "com");
-                    if (!cJSON_IsString(sub))
-                        subject = "No subject";
-                    else
-                        subject = sub->valuestring;
-                } 
-
-                thread_op->sub = (char *) malloc(strlen(subject) + 1);
-                strcpy(thread_op->sub, subject);
-
-                cJSON *time = cJSON_GetObjectItemCaseSensitive(thread, "time");
-                time_t timestamp = (time_t) time->valueint;
-                
-                thread_op->timestamp = timestamp;
-                thread_idx++;
-            }
+            *thread_op_posts = parse_post_json_object(thread_op);
+            //printf("Thread OP Num: %d\n", (*thread_op_posts)->no);
+            thread_op_posts++;
         }
+    }
 
-        thread_op_posts[total_num_threads] = NULL; //End of pointer array marker.
+    *thread_op_posts = NULL; //End of pointer array marker.
 
-        cJSON_Delete(catalog);
-        free(webpage_text);
-        free(catalog_url);
+    cJSON_Delete(catalog);
+    free(webpage_text);
+    free(catalog_url);
 
-        return results;
+    return results;
 }
 
-static char *constr_thread_url(char *chan_url, char *board, unsigned int thread_op_no) 
+static Post *parse_post_json_object(cJSON *post_json_obj)
 {
-    char post_no[20];
-    sprintf(post_no, "%u", thread_op_no); 
+
+    Post *post = (Post *) calloc(1, sizeof(Post));
+
+    cJSON *no = cJSON_GetObjectItemCaseSensitive(post_json_obj, "no");
+    post->no = no->valueint;
+
+    cJSON *sub = cJSON_GetObjectItemCaseSensitive(post_json_obj, "sub");
+    if (cJSON_IsString(sub)) 
+        post->sub = strdup(sub->valuestring);
+    
+    cJSON *com = cJSON_GetObjectItemCaseSensitive(post_json_obj, "com");
+    if (cJSON_IsString(com)) 
+        post->com = strdup(com->valuestring);
+
+    cJSON *name = cJSON_GetObjectItemCaseSensitive(post_json_obj, "name");
+    if (cJSON_IsString(name)) 
+        post->name = strdup(name->valuestring);
+    
+    cJSON *tim = cJSON_GetObjectItemCaseSensitive(post_json_obj, "tim");
+    if (cJSON_IsString(tim))
+        post->tim = strdup(tim->valuestring);
+
+    cJSON *filename = cJSON_GetObjectItemCaseSensitive(post_json_obj, "filename");
+    if (cJSON_IsString(filename))
+        post->filename = strdup(filename->valuestring);
+    
+    cJSON *ext = cJSON_GetObjectItemCaseSensitive(post_json_obj, "ext");
+    if (cJSON_IsString(ext))
+        post->ext = strdup(ext->valuestring);        
+
+    cJSON *trip = cJSON_GetObjectItemCaseSensitive(post_json_obj, "trip");
+    if (cJSON_IsString(trip))
+        post->filename = strdup(trip->valuestring);
+
+    cJSON *email = cJSON_GetObjectItemCaseSensitive(post_json_obj, "email");
+    if (cJSON_IsString(email))
+        post->email = strdup(email->valuestring);
+
+    cJSON *timestamp = cJSON_GetObjectItemCaseSensitive(post_json_obj, "time");
+    post->timestamp = (time_t) timestamp->valueint;
+
+    return post;
+}
+
+static char *constr_thread_url(char *chan_url, char *board, int thread_op_no) 
+{
+    char *post_no = thread_uint_to_str(thread_op_no);
     size_t url_len = strlen(chan_url) + strlen(post_no) + strlen(post_no) + 12;
 
     char *url = (char *) malloc(url_len);
     sprintf(url, "%s/%s/res/%s.json", chan_url, board, post_no);
 
+    free(post_no);
+    //printf("%s\n", url);
     return url;
 }
+
+char *thread_uint_to_str(int thread_no) 
+ {
+    char *post_no_str = (char *) malloc(13);
+    sprintf(post_no_str, "%d", thread_no);
+    return post_no_str; 
+ }
 
 
 static char *constr_catalog_url(char *chan_url, char *board)
@@ -219,6 +276,15 @@ void free_board_parse_results(Board *results)
     free(results);
 }
 
+void free_thread_parse_results(Thread *results)
+{
+    for (int j = 0; j < results->num_of_replies; j++) {
+        free_post(results->posts[j]);
+    }
+    free(results->posts);
+    free(results);
+}
+
 void free_post(Post *post) {
     free(post->sub);
     free(post->com);
@@ -226,7 +292,7 @@ void free_post(Post *post) {
     free(post->tim);
     free(post->filename);
     free(post->ext);
-    free(post->trip); //Null pointers may be free. Fix this.
+    free(post->trip);
     free(post->email);
 
     free(post);

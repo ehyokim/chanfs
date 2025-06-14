@@ -4,6 +4,7 @@
 #include <fuse.h>
 #include <curl/curl.h>
 
+#include "include/fs_utils.h"
 #include "include/fs.h"
 
 ChanFSObj *root;
@@ -18,7 +19,7 @@ int main(int argc, char *argv[])
 {   
     curl_global_init(CURL_GLOBAL_ALL);
 
-    root = generate_fs();
+    root = generate_fs("lit");
     int fuse_res = fuse_main(argc, argv, &operations, NULL);
 
     curl_global_cleanup();

@@ -24,13 +24,9 @@ typedef struct Thread {
     int num_of_replies;
 } Thread;
 
-static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp);
-static char *retrieve_webpage_text(char *url);
 Board *parse_board(char *board);
-Thread *parse_thread(char *board, unsigned int thread_op_no);
-static int find_total_num_threads(cJSON *catalog);
-static int find_total_num_replies(cJSON *thread);
-static char *constr_catalog_url(char *chan_url, char *board);
-static char *constr_thread_url(char *chan_url, char *board, unsigned int thread_op_no); 
+Thread *parse_thread(char *board, int thread_op_no);
+char *thread_uint_to_str(int thread_no); 
 void free_board_parse_results(Board *parse_res);
 void free_post(Post *post);
+void free_thread_parse_results(Thread *results);
