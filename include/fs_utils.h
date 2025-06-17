@@ -10,7 +10,45 @@ typedef enum filetype {
     THREAD_OP_TEXT, POST_TEXT, ATTACHED_FILE
 } Filetype;
 
-typedef struct ChanFSObj {
+typedef enum dirtype {
+    ROOT_DIR, THREAD_DIR, POST_DIR
+} Dirtype;
+
+typedef struct str_rep_buffer {
+    int buffer_size;
+    int curr_str_size;
+    char *buffer_start;
+    char *str_end;
+} StrRepBuffer;
+
+struct ChanFSObj;
+typedef struct ChanFSObj ChanFSObj;
+
+typedef struct Chandir {
+    ChanFSObj **children;
+    int num_of_children_slots;
+    int num_of_children;
+    Dirtype type;
+} Chandir;
+
+typedef struct Chanfile {
+    off_t size;
+    ChanFSObj *curr_dir;
+    Filetype type;
+    StrRepBuffer contents;
+} Chanfile;
+
+typedef union asso_info {
+    Post *asso_post; 
+    Thread *asso_thread;
+} AssoInfo;
+
+typedef union fs_obj {
+    Chandir chandir;
+    Chanfile chanfile;
+} FSObj;
+
+struct ChanFSObj { //Research more into using unions and initial sequences.
     mode_t base_mode;
     mode_t mode;
     char *name;
@@ -18,25 +56,21 @@ typedef struct ChanFSObj {
     time_t time;
     uid_t uid;
     gid_t gid;
-    void *obj;
-} ChanFSObj;
+    int generated_flag;
+    AssoInfo asso_info;
+    FSObj fs_obj;
+};
 
-typedef struct Chandir {
-    ChanFSObj **children;
-    int num_of_children_slots;
-    int num_of_children;
-} Chandir;
-
-typedef struct Chanfile {
-    int no; //Post number.
-    int file_type;
-    off_t size;
-    ChanFSObj *curr_dir;
-    Filetype type;
-    char *contents;
-} Chanfile;
 
 ChanFSObj *generate_fs(char *board);
+void generate_thread_dir(ChanFSObj *thread_dir_object);
+void generate_post_dir(ChanFSObj *post_dir_object);
+StrRepBuffer generate_file_contents(ChanFSObj *file_obj);
+void generate_dir_contents(ChanFSObj *dir_obj);
+void free_str_rep_buffer(StrRepBuffer str_buffer);
+
+
+ 
 
 
 

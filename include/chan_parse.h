@@ -2,7 +2,8 @@
 #include <time.h>
 
 typedef struct Post {
-    unsigned int no;
+    int no;
+    char *board;
     char *sub;
     char *com;
     char *name;
@@ -26,7 +27,7 @@ typedef struct Thread {
 
 Board *parse_board(char *board);
 Thread *parse_thread(char *board, int thread_op_no);
-char *thread_uint_to_str(int thread_no); 
+char *thread_int_to_str(int thread_no); 
 void free_board_parse_results(Board *parse_res);
 void free_post(Post *post);
 void free_thread_parse_results(Thread *results);

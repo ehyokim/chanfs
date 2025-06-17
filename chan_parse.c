@@ -9,7 +9,7 @@ static int find_total_num_threads(cJSON *catalog);
 static int find_total_num_replies(cJSON *thread);
 static char *constr_catalog_url(char *chan_url, char *board);
 static char *constr_thread_url(char *chan_url, char *board, int thread_op_no);
-static Post *parse_post_json_object(cJSON *post_json_obj);
+static Post *parse_post_json_object(char * board, cJSON *post_json_obj);
 static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp);
 static char *retrieve_webpage_text(char *url);
 
@@ -100,7 +100,7 @@ Thread *parse_thread(char *board, int thread_op_no)
     cJSON *post_json_obj = NULL;
     cJSON_ArrayForEach(post_json_obj, replies) 
     {
-         *thread_replies = parse_post_json_object(post_json_obj);
+         *thread_replies = parse_post_json_object(board, post_json_obj);
         thread_replies++;
     }
 
@@ -145,8 +145,7 @@ Board *parse_board(char *board)
         cJSON *thread_op = NULL;
         cJSON_ArrayForEach(thread_op, thread_list)
         {
-            *thread_op_posts = parse_post_json_object(thread_op);
-            //printf("Thread OP Num: %d\n", (*thread_op_posts)->no);
+            *thread_op_posts = parse_post_json_object(board, thread_op);
             thread_op_posts++;
         }
     }
@@ -160,7 +159,7 @@ Board *parse_board(char *board)
     return results;
 }
 
-static Post *parse_post_json_object(cJSON *post_json_obj)
+static Post *parse_post_json_object(char *board, cJSON *post_json_obj)
 {
 
     Post *post = (Post *) calloc(1, sizeof(Post));
@@ -203,23 +202,23 @@ static Post *parse_post_json_object(cJSON *post_json_obj)
     cJSON *timestamp = cJSON_GetObjectItemCaseSensitive(post_json_obj, "time");
     post->timestamp = (time_t) timestamp->valueint;
 
+    post->board = board;
     return post;
 }
 
 static char *constr_thread_url(char *chan_url, char *board, int thread_op_no) 
 {
-    char *post_no = thread_uint_to_str(thread_op_no);
+    char *post_no = thread_int_to_str(thread_op_no);
     size_t url_len = strlen(chan_url) + strlen(post_no) + strlen(post_no) + 12;
 
     char *url = (char *) malloc(url_len);
     sprintf(url, "%s/%s/res/%s.json", chan_url, board, post_no);
 
     free(post_no);
-    //printf("%s\n", url);
     return url;
 }
 
-char *thread_uint_to_str(int thread_no) 
+char *thread_int_to_str(int thread_no) 
  {
     char *post_no_str = (char *) malloc(13);
     sprintf(post_no_str, "%d", thread_no);
