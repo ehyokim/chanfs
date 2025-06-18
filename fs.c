@@ -19,10 +19,9 @@ int do_getattr(const char *path, struct stat *st)
         return -ENOENT;
 
     if (found_obj->base_mode == S_IFREG) {
-        if (!(found_obj->generated_flag)) {
+        if (!(found_obj->generated_flag))
             generate_file_contents(found_obj);
-            found_obj->generated_flag = 1;
-        }
+            
         Chanfile obj = found_obj->fs_obj.chanfile;
         st->st_size = obj.size;
     } else if (found_obj->base_mode != S_IFDIR)

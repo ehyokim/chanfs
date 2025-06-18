@@ -7,11 +7,11 @@
 #define FILENAMELEN 20
 
 typedef enum filetype {
-    THREAD_OP_TEXT, POST_TEXT, ATTACHED_FILE
+    THREAD_OP_TEXT, POST_TEXT, ATTACHED_FILE, ERROR_FILE
 } Filetype;
 
 typedef enum dirtype {
-    ROOT_DIR, THREAD_DIR, POST_DIR
+    ROOT_DIR, BOARD_DIR, THREAD_DIR, POST_DIR
 } Dirtype;
 
 typedef struct str_rep_buffer {
@@ -39,8 +39,9 @@ typedef struct Chanfile {
 } Chanfile;
 
 typedef union asso_info {
-    Post *asso_post; 
-    Thread *asso_thread;
+    Post *post; 
+    Thread thread;
+    char *board;
 } AssoInfo;
 
 typedef union fs_obj {
@@ -48,7 +49,7 @@ typedef union fs_obj {
     Chanfile chanfile;
 } FSObj;
 
-struct ChanFSObj { //Research more into using unions and initial sequences.
+struct ChanFSObj {
     mode_t base_mode;
     mode_t mode;
     char *name;
@@ -62,9 +63,7 @@ struct ChanFSObj { //Research more into using unions and initial sequences.
 };
 
 
-ChanFSObj *generate_fs(char *board);
-void generate_thread_dir(ChanFSObj *thread_dir_object);
-void generate_post_dir(ChanFSObj *post_dir_object);
+ChanFSObj *generate_fs(char *board_strs[]);
 StrRepBuffer generate_file_contents(ChanFSObj *file_obj);
 void generate_dir_contents(ChanFSObj *dir_obj);
 void free_str_rep_buffer(StrRepBuffer str_buffer);
