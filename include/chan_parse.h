@@ -25,9 +25,16 @@ typedef struct Thread {
     int num_of_replies;
 } Thread;
 
+typedef struct AttachedFile {
+    size_t size;
+    char *file;	
+} AttachedFile;
+
 Board parse_board(char *board);
 Thread parse_thread(char *board, int thread_op_no);
+AttachedFile download_file(char *board, char *filename);
 char *thread_int_to_str(int thread_no); 
 void free_board_parse_results(Board parse_res);
 void free_post(Post post);
 void free_thread_parse_results(Thread results);
+

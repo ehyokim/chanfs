@@ -5,24 +5,25 @@
 
 #include "include/chan_parse.h"
 
+extern char *chan;
+
+typedef struct MemoryStruct {
+  char *memory;
+  size_t size;
+} MemoryStruct;
+
 static int find_total_num_threads(cJSON *catalog);
 static int find_total_num_replies(cJSON *thread);
-static char *constr_catalog_url(char *chan_url, char *board);
 static char *constr_thread_url(char *chan_url, char *board, int thread_op_no);
 static Post parse_post_json_object(char * board, cJSON *post_json_obj);
 static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp);
-static char *retrieve_webpage_text(char *url);
-
-struct MemoryStruct {
-  char *memory;
-  size_t size;
-};
+static MemoryStruct retrieve_webpage(char *url);
 
 static size_t
 WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
 {
     size_t realsize = size * nmemb;
-    struct MemoryStruct *mem = (struct MemoryStruct *) userp;
+    MemoryStruct *mem = (MemoryStruct *) userp;
 
     char *ptr = realloc(mem->memory, mem->size + realsize + 1);
     
@@ -39,7 +40,7 @@ WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
     return realsize;
 } 
 
-static char *retrieve_webpage_text(char *url)
+static MemoryStruct retrieve_webpage(char *url)
 {
     CURL *curl_handle;
     CURLcode res;
@@ -64,19 +65,36 @@ static char *retrieve_webpage_text(char *url)
     if(res != CURLE_OK) {
         fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
         free(chunk.memory);
-        return NULL;
+        return (MemoryStruct) {NULL, -1};
     }
 
     curl_easy_cleanup(curl_handle);
-    return (char *)chunk.memory;
+    return chunk;
+}
+
+AttachedFile download_file(char *board, char *filename)
+{
+    size_t url_len = strlen(chan) + strlen(board) + strlen(filename) + 7;
+    char file_url[url_len];
+    sprintf(file_url, "%s/%s/src/%s", chan, board, filename);
+    
+    //printf("Picture link to scrap: %s\n", file_url);
+
+    MemoryStruct chunk = retrieve_webpage(file_url);
+    if (chunk.memory == NULL)
+        return (AttachedFile) {0, NULL};
+
+    return (AttachedFile) {chunk.size, chunk.memory};
 }
 
 //Fix error handling here. 
 Thread parse_thread(char *board, int thread_op_no)
 {
-
-    char *thread_url = constr_thread_url("https://lainchan.org", board, thread_op_no);
-    char *webpage_text = retrieve_webpage_text(thread_url);
+    char *thread_url = constr_thread_url(chan, board, thread_op_no);
+    char *webpage_text = retrieve_webpage(thread_url).memory;
+    if (webpage_text == NULL)
+	return (Thread) {NULL, -1};	
+    
     cJSON *thread = cJSON_Parse(webpage_text);
 
     if (thread == NULL) {
@@ -114,10 +132,12 @@ Thread parse_thread(char *board, int thread_op_no)
 }
 
 Board parse_board(char *board)
-{
+{   
+    size_t url_len = strlen(chan) + strlen(board) + 15;
+    char catalog_url[url_len]; 
+    sprintf(catalog_url, "%s/%s/catalog.json", chan, board);
 
-    char *catalog_url = constr_catalog_url("https://lainchan.org", board);
-    char *webpage_text = retrieve_webpage_text(catalog_url);
+    char *webpage_text = retrieve_webpage(catalog_url).memory;
     cJSON *catalog = cJSON_Parse(webpage_text);
 
     Board results;
@@ -154,7 +174,6 @@ Board parse_board(char *board)
 
     cJSON_Delete(catalog);
     free(webpage_text);
-    free(catalog_url);
 
     return results;
 }
@@ -224,16 +243,6 @@ char *thread_int_to_str(int thread_no)
     sprintf(post_no_str, "%d", thread_no);
     return post_no_str; 
  }
-
-
-static char *constr_catalog_url(char *chan_url, char *board)
-{
-    size_t url_len = strlen(chan_url) + strlen(board) + 15;
-    char *url = (char *) malloc(url_len); 
-    sprintf(url, "%s/%s/catalog.json", chan_url, board);
-
-    return url;
-}
 
 static int find_total_num_replies(cJSON *thread)
 {

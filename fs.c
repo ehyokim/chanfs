@@ -62,9 +62,7 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t off
 
     return 0;
 }
-/* Idea: Maybe keep a hash table threads hashed or indiced by their post_no. then retriving any thread and its contents will be loaded into memory for the next time
-         we need to access them. This could be useful for generating reply subdirectories dynamically without having to retrieve it every time.
-*/
+
 int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     printf("Readfile called with path: %s\n", path);
@@ -75,7 +73,6 @@ int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fu
 
     if(found_obj->base_mode == S_IFDIR)
         return -EISDIR;
-
     
     Chanfile file = found_obj->fs_obj.chanfile;
     off_t file_size = file.size;
@@ -83,16 +80,13 @@ int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fu
     if (offset > file_size) 
         return -EINVAL;
 
-    char *contents = file.contents.buffer_start;
+    char *contents = file.contents;
+    size_t bytes_read = (offset + size > file_size) ? file_size - offset : size; //Adding offset and size is probably not a good idea.
 
-    char *offsetted_str = contents + offset;
-    size_t bytes_read;
-    for (bytes_read = 0; bytes_read < size && (*buffer++ = *offsetted_str++); bytes_read++);
-
-    return bytes_read; //Not exactly correct.
+    memcpy(buffer, contents + offset, bytes_read);
+    return bytes_read;
 }
 
-/* Since all the files are in the root directory, this very simple for now.*/
 static ChanFSObj *traverse(const char *path)
 {
     char *pathcpy = strdup(path);
@@ -107,7 +101,7 @@ static ChanFSObj *traverse(const char *path)
             return NULL;
         }
 
-       Chandir curr_dir = traverse_ptr->fs_obj.chandir;
+        Chandir curr_dir = traverse_ptr->fs_obj.chandir;
 
         int num_of_children = curr_dir.num_of_children;
         ChanFSObj **children = curr_dir.children;

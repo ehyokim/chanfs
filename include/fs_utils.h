@@ -35,7 +35,7 @@ typedef struct Chanfile {
     off_t size;
     ChanFSObj *curr_dir;
     Filetype type;
-    StrRepBuffer contents;
+    char *contents;
 } Chanfile;
 
 typedef union asso_info {
@@ -64,10 +64,9 @@ struct ChanFSObj {
 
 
 ChanFSObj *generate_fs(char *board_strs[]);
-StrRepBuffer generate_file_contents(ChanFSObj *file_obj);
+void generate_file_contents(ChanFSObj *file_obj);
 void generate_dir_contents(ChanFSObj *dir_obj);
 void free_str_rep_buffer(StrRepBuffer str_buffer);
-
 
  
 

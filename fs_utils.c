@@ -22,9 +22,10 @@ static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2);
 static void generate_thread_dir(ChanFSObj *thread_dir_object);
 static void generate_post_dir(ChanFSObj *post_dir_object);
 static void generate_board_dir(ChanFSObj *board_dir_object); 
-static void write_to_file(ChanFSObj *file_obj, StrRepBuffer str_buffer);
 static StrRepBuffer new_str_rep_buffer(void); 
 static void write_to_file_from_buffer(ChanFSObj *file_obj, StrRepBuffer str_buffer);
+static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file);
+static char *concat_tim_ext(Post *post);
 
 
 ChanFSObj *generate_fs(char *board_strs[])
@@ -48,11 +49,7 @@ static void generate_board_dir(ChanFSObj *board_dir_object)
     /* Write to an error file in the board directory if parsing goes wrong. */
     if (results.threads == NULL) {
         fprintf(stderr, "Error: Board /%s/ could not be read.\n", board);
-        
-        ChanFSObj *err_file = init_file("Error.txt", board_dir_object, time(NULL), ERROR_FILE, (AssoInfo) board);
-        StrRepBuffer err_str_buffer = new_str_rep_buffer();
-        append_to_buffer_formatted(&err_str_buffer, "Error: Board %s has failed to load. Perhaps it doesn't exist?", board);
-        write_to_file_from_buffer(err_file, err_str_buffer);
+        init_file("Error.txt", board_dir_object, time(NULL), ERROR_FILE, board_dir_object->asso_info);
     }
     
     for (int i = 0; i < results.num_of_threads; i++) {
@@ -72,7 +69,7 @@ static void generate_thread_dir(ChanFSObj *thread_dir_object)
         int num_of_replies = thread_replies.num_of_replies;
 
         init_file("Thread.txt", thread_dir_object, thread_op->timestamp, THREAD_OP_TEXT, (AssoInfo) thread_replies);
-        init_file("File", thread_dir_object, thread_op->timestamp, ATTACHED_FILE, thread_dir_object->asso_info); //Picture and file info.        
+        init_file(concat_tim_ext(thread_op), thread_dir_object, thread_op->timestamp, ATTACHED_FILE, thread_dir_object->asso_info);     
 
         Post *replies = thread_replies.posts;
         for (int k = 1; k < num_of_replies; k++) { //Skip first post, which is OP.
@@ -80,8 +77,6 @@ static void generate_thread_dir(ChanFSObj *thread_dir_object)
             char *thread_no_str = thread_int_to_str(reply->no);
             init_dir(thread_no_str, thread_dir_object, reply->timestamp, POST_DIR, (AssoInfo) reply); //Create post directory.
         }
-        
-        //free_thread_parse_results(thread_replies); //Take care of memory.
 }
 
 static void generate_post_dir(ChanFSObj *post_dir_object)
@@ -90,14 +85,11 @@ static void generate_post_dir(ChanFSObj *post_dir_object)
     init_file("Post.txt", post_dir_object, post->timestamp, POST_TEXT, post_dir_object->asso_info); //Add Post text to each reply directory.
 
     if (post->tim != NULL && post->ext != NULL)  {
-        char *concat_file_str = (char *) malloc(strlen(post->tim) + strlen(post->ext) + 1);
-        strcpy(concat_file_str, post->tim);
-        strcat(concat_file_str, post->ext);
-        init_file(concat_file_str, post_dir_object, post->timestamp, ATTACHED_FILE, post_dir_object->asso_info); //Add Image file if it exists to each post directory.
+        init_file(concat_tim_ext(post), post_dir_object, post->timestamp, ATTACHED_FILE, post_dir_object->asso_info); //Add Image file if it exists to each post directory.
     }    
 }
 
-StrRepBuffer generate_file_contents(ChanFSObj *file_obj)
+void generate_file_contents(ChanFSObj *file_obj)
 {       
         Chanfile file = file_obj->fs_obj.chanfile;
         Filetype file_type = file.type;
@@ -105,21 +97,25 @@ StrRepBuffer generate_file_contents(ChanFSObj *file_obj)
         StrRepBuffer str_buffer;
         switch (file_type) {
             case POST_TEXT:
-                Post *post = file_obj->asso_info.post;
-                str_buffer = generate_post_str_rep(post);
+                str_buffer = generate_post_str_rep(file_obj->asso_info.post);
+                write_to_file_from_buffer(file_obj, str_buffer);
                 break;
             case THREAD_OP_TEXT:
-                Thread thread = file_obj->asso_info.thread;
-                str_buffer = generate_thread_str_rep(thread);
+                str_buffer = generate_thread_str_rep(file_obj->asso_info.thread);
+                write_to_file_from_buffer(file_obj, str_buffer);
                 break;
             case ATTACHED_FILE:
+                Post *post = file_obj->asso_info.post;
+                AttachedFile attached_file = download_file(post->board, file_obj->name);
+                write_to_file_from_attached_file(file_obj, attached_file);
+                break;
+            case ERROR_FILE:
+                StrRepBuffer err_str_buffer = new_str_rep_buffer();
+                append_to_buffer_formatted(&err_str_buffer, "Error: Board %s has failed to load. Perhaps it doesn't exist?", file_obj->asso_info.board);
+                write_to_file_from_buffer(file_obj, err_str_buffer);
                 break;
         }
-
-        write_to_file_from_buffer(file_obj, str_buffer);
         file_obj->generated_flag = 1;
-    
-    return str_buffer;
 }
 
 void generate_dir_contents(ChanFSObj *dir_obj)
@@ -166,17 +162,6 @@ static StrRepBuffer generate_thread_str_rep(Thread thread)
     return thread_str_buffer;
 }
 
-static StrRepBuffer new_str_rep_buffer(void) 
-{
-    int buffer_size = 100;
-    char *buffer_start = (char *) malloc(buffer_size);
-    char *str_end = buffer_start;
-    int curr_str_size = 0;
-
-    return (StrRepBuffer) {buffer_size, curr_str_size, buffer_start, str_end};
-
-}
-
 static StrRepBuffer generate_post_str_rep(Post *post) 
 {
     StrRepBuffer buffer = new_str_rep_buffer();
@@ -184,7 +169,7 @@ static StrRepBuffer generate_post_str_rep(Post *post)
     append_to_buffer_formatted(&buffer, "Board: /%s/\n", post->board);
 
     char *thread_no_str = thread_int_to_str(post->no); 
-    append_to_buffer_formatted(&buffer, "No: %d\n", thread_no_str);
+    append_to_buffer_formatted(&buffer, "No: %s\n", thread_no_str);
 
     append_to_buffer_formatted(&buffer, "Name: %s\n", post->name);
     append_to_buffer_formatted(&buffer, "Trip: %s\n", post->trip);
@@ -202,10 +187,37 @@ static StrRepBuffer generate_post_str_rep(Post *post)
     return buffer;
 }
 
+static StrRepBuffer new_str_rep_buffer(void) 
+{
+    int buffer_size = 100;
+    char *buffer_start = (char *) malloc(buffer_size);
+    char *str_end = buffer_start;
+    int curr_str_size = 0;
+
+    return (StrRepBuffer) {buffer_size, curr_str_size, buffer_start, str_end};
+
+}
+
+static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file)
+{
+    Chanfile *file = (Chanfile *) &(file_obj->fs_obj);    
+    file->contents = attached_file.file;
+    file->size = attached_file.size;
+}
+
 static void write_to_file_from_buffer(ChanFSObj *file_obj, StrRepBuffer str_buffer) {
     Chanfile *file = (Chanfile *) &(file_obj->fs_obj);    
-    file->contents = str_buffer;
+    file->contents = str_buffer.buffer_start;
     file->size = str_buffer.curr_str_size;
+}
+
+static char *concat_tim_ext(Post *post)
+{
+    char *concat_file_str = (char *) malloc(strlen(post->tim) + strlen(post->ext) + 1);
+    strcpy(concat_file_str, post->tim);
+    strcat(concat_file_str, post->ext);
+
+    return concat_file_str;
 }
 
 static char *generate_time_string(time_t t) 
@@ -221,6 +233,7 @@ static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
 {
     if (s2.curr_str_size + s1->curr_str_size + 1 > s1->buffer_size) {
         int new_buffer_size = s1->buffer_size + (s2.curr_str_size + 1) + 100;
+        
         s1->buffer_start = (char *) realloc(s1->buffer_start, new_buffer_size);
         s1->str_end = s1->buffer_start + s1->curr_str_size;
         s1->buffer_size = new_buffer_size;
