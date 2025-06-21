@@ -26,8 +26,8 @@ typedef struct Thread {
 } Thread;
 
 typedef struct AttachedFile {
-    size_t size;
     char *file;	
+    size_t size;
 } AttachedFile;
 
 Board parse_board(char *board);

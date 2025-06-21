@@ -5,7 +5,7 @@
 
 #include "include/chan_parse.h"
 
-extern char *chan;
+extern const char *chan;
 
 typedef struct MemoryStruct {
   char *memory;
@@ -14,7 +14,7 @@ typedef struct MemoryStruct {
 
 static int find_total_num_threads(cJSON *catalog);
 static int find_total_num_replies(cJSON *thread);
-static char *constr_thread_url(char *chan_url, char *board, int thread_op_no);
+static char *constr_thread_url(char *board, int thread_op_no);
 static Post parse_post_json_object(char * board, cJSON *post_json_obj);
 static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp);
 static MemoryStruct retrieve_webpage(char *url);
@@ -47,11 +47,17 @@ static MemoryStruct retrieve_webpage(char *url)
 
     struct MemoryStruct chunk;
 
-    char *mem_chunk = chunk.memory = malloc(1);  /* grown as needed by the realloc above */
+    if (!url) {
+        return (MemoryStruct) {NULL, -1};
+    }
+
+    char *mem_chunk = chunk.memory = malloc(1);
     if (!mem_chunk) {
         fprintf(stderr, "Initial memory chunk could not be allocated");
+        return (MemoryStruct) {NULL, -1};
+
     }
-    chunk.size = 0;    /* no data at this point */
+    chunk.size = 0;
 
     curl_handle = curl_easy_init();
     curl_easy_setopt(curl_handle, CURLOPT_URL, url) ;
@@ -61,7 +67,6 @@ static MemoryStruct retrieve_webpage(char *url)
 
     res = curl_easy_perform(curl_handle);
 
-    /* check for errors */
     if(res != CURLE_OK) {
         fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
         free(chunk.memory);
@@ -70,49 +75,65 @@ static MemoryStruct retrieve_webpage(char *url)
 
     curl_easy_cleanup(curl_handle);
     return chunk;
+
 }
 
 AttachedFile download_file(char *board, char *filename)
 {
+    if (!filename)
+        return (AttachedFile) {NULL, 0};
+
     size_t url_len = strlen(chan) + strlen(board) + strlen(filename) + 7;
     char file_url[url_len];
     sprintf(file_url, "%s/%s/src/%s", chan, board, filename);
     
-    //printf("Picture link to scrap: %s\n", file_url);
-
     MemoryStruct chunk = retrieve_webpage(file_url);
-    if (chunk.memory == NULL)
-        return (AttachedFile) {0, NULL};
+    if (!chunk.memory)
+        return (AttachedFile) {NULL, 0};
 
-    return (AttachedFile) {chunk.size, chunk.memory};
+    return (AttachedFile) {chunk.memory, chunk.size};
 }
 
 //Fix error handling here. 
 Thread parse_thread(char *board, int thread_op_no)
 {
-    char *thread_url = constr_thread_url(chan, board, thread_op_no);
+    Thread results;
+    int success_status = 0;
+
+    char *thread_url = constr_thread_url(board, thread_op_no);
     char *webpage_text = retrieve_webpage(thread_url).memory;
-    if (webpage_text == NULL)
-	return (Thread) {NULL, -1};	
+
+    if (!webpage_text)
+        goto retrieve_fail;
     
     cJSON *thread = cJSON_Parse(webpage_text);
 
-    if (thread == NULL) {
-        fprintf(stderr, "Could not allocate thread JSON struct.\n");
-        return (Thread) {NULL, -1};
+    if (!thread) {
+        fprintf(stderr, "Error: Could not allocate thread JSON struct.\n");
+        goto parse_fail;        
     }
 
-    Thread results;
     int total_num_replies = find_total_num_replies(thread);
+    if (total_num_replies < 0) {
+        fprintf(stderr, "Error: Could not parse thread.\n");
+        goto traverse_fail;
+    }
+
+
     results.num_of_replies = total_num_replies;
-    results.posts = (Post *) malloc((total_num_replies + 1) * sizeof(Post));
+    results.posts = malloc((total_num_replies + 1) * sizeof(Post));
+
+    if (!results.posts) {
+        fprintf(stderr, "Error: Allocating memory for Post array for Thread struct failed.\n");
+        goto traverse_fail;
+    }
 
     Post *thread_replies = results.posts;
     
     cJSON *replies = cJSON_GetObjectItemCaseSensitive(thread, "posts");
     if (!cJSON_IsArray(replies)) {
-        fprintf(stderr, "Could not find post array.\n");
-        return (Thread) {NULL, -1};
+        fprintf(stderr, "Error: Could not find post array.\n");
+        goto traverse_fail;
     }
     
     cJSON *post_json_obj = NULL;
@@ -123,31 +144,51 @@ Thread parse_thread(char *board, int thread_op_no)
     }
 
     thread_replies = NULL;  //End of pointer array marker.
+    success_status = 1;
 
+traverse_fail:
     cJSON_Delete(thread);
+parse_fail:
     free(webpage_text);
+retrieve_fail:
     free(thread_url);
 
-    return results;
+    return (success_status) ? results : (Thread) {NULL, -1};
 }
 
 Board parse_board(char *board)
 {   
+    Board results;
+    int success_status = 0;
+
     size_t url_len = strlen(chan) + strlen(board) + 15;
     char catalog_url[url_len]; 
     sprintf(catalog_url, "%s/%s/catalog.json", chan, board);
 
     char *webpage_text = retrieve_webpage(catalog_url).memory;
+
+    if (!webpage_text)
+        goto retrieve_fail;
+
     cJSON *catalog = cJSON_Parse(webpage_text);
 
-    Board results;
-    int total_num_threads = find_total_num_threads(catalog);
-    results.num_of_threads = total_num_threads;
-    results.threads = (Post *) malloc((total_num_threads + 1) * sizeof(Post)); //Could just allocate a continguous block of structs rather than pointers to structs.
-
-    if(catalog == NULL) {
+    if (!catalog) {
         fprintf(stderr, "Could not allocate catalog JSON struct.\n");
-        return (Board) {NULL, -1};
+        goto parse_fail;
+    }
+    
+    int total_num_threads = find_total_num_threads(catalog);
+    if (total_num_threads < 0) {
+        fprintf(stderr, "Error: Could not parse catalog.\n");
+        goto traverse_fail;
+    }
+
+    results.num_of_threads = total_num_threads;
+    results.threads = malloc((total_num_threads + 1) * sizeof(Post)); 
+
+    if (!results.threads) {
+        fprintf(stderr, "Error: Could not allocate memory for Post array for Board struct. \n");
+        goto traverse_fail;
     }
     
     Post *thread_op_posts = results.threads;
@@ -159,7 +200,7 @@ Board parse_board(char *board)
 
         if (!cJSON_IsArray(thread_list)) {
             fprintf(stderr, "Could not find thread array.\n");
-            return (Board) {NULL, -1};
+            goto traverse_fail;
         }
         
         cJSON *thread_op = NULL;
@@ -171,16 +212,18 @@ Board parse_board(char *board)
     }
 
     thread_op_posts = NULL; //End of pointer array marker.
+    success_status = 1;
 
+traverse_fail:
     cJSON_Delete(catalog);
+parse_fail:
     free(webpage_text);
-
-    return results;
+retrieve_fail:
+    return (success_status) ? results : (Board) {NULL, -1};
 }
 
 static Post parse_post_json_object(char *board, cJSON *post_json_obj)
 {
-
     Post post = {};
 
     cJSON *no = cJSON_GetObjectItemCaseSensitive(post_json_obj, "no");
@@ -225,13 +268,21 @@ static Post parse_post_json_object(char *board, cJSON *post_json_obj)
     return post;
 }
 
-static char *constr_thread_url(char *chan_url, char *board, int thread_op_no) 
+static char *constr_thread_url(char *board, int thread_op_no) 
 {
     char *post_no = thread_int_to_str(thread_op_no);
-    size_t url_len = strlen(chan_url) + strlen(post_no) + strlen(post_no) + 12;
+    if (!post_no)
+        return NULL;
 
-    char *url = (char *) malloc(url_len);
-    sprintf(url, "%s/%s/res/%s.json", chan_url, board, post_no);
+    size_t url_len = strlen(chan) + strlen(post_no) + 12;
+
+    char *url = malloc(url_len);
+    if (!url) {
+        fprintf(stderr, "Error: Could not allocate memory to create url to OP thread.\n");
+        return NULL;
+    }
+
+    sprintf(url, "%s/%s/res/%s.json", chan, board, post_no);
 
     free(post_no);
     return url;
@@ -239,7 +290,12 @@ static char *constr_thread_url(char *chan_url, char *board, int thread_op_no)
 
 char *thread_int_to_str(int thread_no) 
  {
-    char *post_no_str = (char *) malloc(13);
+    char *post_no_str = malloc(13);
+    if (!post_no_str) {
+        fprintf(stderr, "Error: Could not allocate memory to convert thread no to string.\n");
+        return NULL;
+    }
+
     sprintf(post_no_str, "%d", thread_no);
     return post_no_str; 
  }

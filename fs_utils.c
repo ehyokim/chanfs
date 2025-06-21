@@ -7,6 +7,8 @@
 
 #include "include/fs_utils.h"
 
+#define INIT_NUM_CHILD_SLOTS 50
+
 static char *truncate_name(char *name);
 static void add_child(ChanFSObj *dir, ChanFSObj *child);
 static char *set_thread_dir_name(Post *thread_op);
@@ -47,15 +49,17 @@ static void generate_board_dir(ChanFSObj *board_dir_object)
     Board results = parse_board(board);
 
     /* Write to an error file in the board directory if parsing goes wrong. */
-    if (results.threads == NULL) {
+    if (!results.threads) {
         fprintf(stderr, "Error: Board /%s/ could not be read.\n", board);
         init_file("Error.txt", board_dir_object, time(NULL), ERROR_FILE, board_dir_object->asso_info);
     }
     
     for (int i = 0; i < results.num_of_threads; i++) {
         Post *thread_op = results.threads + i;
-        char *thread_dir_name = set_thread_dir_name(thread_op);            
-        init_dir(thread_dir_name, board_dir_object, thread_op->timestamp, THREAD_DIR, (AssoInfo) thread_op);
+        char *thread_dir_name = set_thread_dir_name(thread_op);
+
+        if(thread_dir_name != NULL)            
+            init_dir(thread_dir_name, board_dir_object, thread_op->timestamp, THREAD_DIR, (AssoInfo) thread_op);
     }
 }
 
@@ -65,17 +69,21 @@ static void generate_thread_dir(ChanFSObj *thread_dir_object)
         char *board = thread_op->board;
 
         Thread thread_replies = parse_thread(board, thread_op->no);
-
         int num_of_replies = thread_replies.num_of_replies;
 
         init_file("Thread.txt", thread_dir_object, thread_op->timestamp, THREAD_OP_TEXT, (AssoInfo) thread_replies);
-        init_file(concat_tim_ext(thread_op), thread_dir_object, thread_op->timestamp, ATTACHED_FILE, thread_dir_object->asso_info);     
+
+        char *concat_name;
+        if(thread_op->tim != NULL && thread_op->ext != NULL && (concat_name = concat_tim_ext(thread_op)) != NULL)
+            init_file(concat_name, thread_dir_object, thread_op->timestamp, ATTACHED_FILE, thread_dir_object->asso_info);     
 
         Post *replies = thread_replies.posts;
         for (int k = 1; k < num_of_replies; k++) { //Skip first post, which is OP.
             Post *reply = replies + k;
             char *thread_no_str = thread_int_to_str(reply->no);
-            init_dir(thread_no_str, thread_dir_object, reply->timestamp, POST_DIR, (AssoInfo) reply); //Create post directory.
+
+            if(thread_no_str != NULL)
+                init_dir(thread_no_str, thread_dir_object, reply->timestamp, POST_DIR, (AssoInfo) reply); //Create post directory.
         }
 }
 
@@ -84,8 +92,9 @@ static void generate_post_dir(ChanFSObj *post_dir_object)
     Post *post = post_dir_object->asso_info.post;
     init_file("Post.txt", post_dir_object, post->timestamp, POST_TEXT, post_dir_object->asso_info); //Add Post text to each reply directory.
 
-    if (post->tim != NULL && post->ext != NULL)  {
-        init_file(concat_tim_ext(post), post_dir_object, post->timestamp, ATTACHED_FILE, post_dir_object->asso_info); //Add Image file if it exists to each post directory.
+    char *concat_name;
+    if (post->tim != NULL && post->ext != NULL && (concat_name = concat_tim_ext(post)) != NULL)  {
+        init_file(concat_name, post_dir_object, post->timestamp, ATTACHED_FILE, post_dir_object->asso_info); //Add Image file if it exists to each post directory.
     }    
 }
 
@@ -149,7 +158,12 @@ void free_str_rep_buffer(StrRepBuffer str_buffer)
 static StrRepBuffer generate_thread_str_rep(Thread thread) 
 {
     Post *replies = thread.posts;
-    StrRepBuffer thread_str_buffer = generate_post_str_rep(replies); //Begin with converting the OP post. 
+    StrRepBuffer thread_str_buffer = generate_post_str_rep(replies); //Begin with converting the OP post.
+
+    if (thread_str_buffer.buffer_size == 0) {
+        fprintf(stderr, "Error: Could not start thread string representation buffer.\n");
+        return thread_str_buffer;
+    } 
 
     StrRepBuffer reply_str_buffer;
     for (int i = 1; i < thread.num_of_replies; i++) {
@@ -165,18 +179,24 @@ static StrRepBuffer generate_thread_str_rep(Thread thread)
 static StrRepBuffer generate_post_str_rep(Post *post) 
 {
     StrRepBuffer buffer = new_str_rep_buffer();
+    if (buffer.buffer_size == 0) {
+        fprintf(stderr, "Error; Could not allocate memory to start a new StrRepBuffer.\n");
+        return buffer;
+    }
 
     append_to_buffer_formatted(&buffer, "Board: /%s/\n", post->board);
 
     char *thread_no_str = thread_int_to_str(post->no); 
-    append_to_buffer_formatted(&buffer, "No: %s\n", thread_no_str);
+    if (thread_no_str != NULL)
+        append_to_buffer_formatted(&buffer, "No: %s\n", thread_no_str);
 
     append_to_buffer_formatted(&buffer, "Name: %s\n", post->name);
     append_to_buffer_formatted(&buffer, "Trip: %s\n", post->trip);
     append_to_buffer_formatted(&buffer, "Email: %s\n", post->email);
  
     char *time_str = generate_time_string(post->timestamp);
-    append_to_buffer_formatted(&buffer, "Time: %s\n", time_str);
+    if (time_str != NULL)
+        append_to_buffer_formatted(&buffer, "Time: %s\n", time_str);
 
     append_to_buffer_formatted(&buffer, "Subject: %s\n", post->sub);
     append_to_buffer_formatted(&buffer, "\n\n %s\n", post->com);
@@ -190,7 +210,13 @@ static StrRepBuffer generate_post_str_rep(Post *post)
 static StrRepBuffer new_str_rep_buffer(void) 
 {
     int buffer_size = 100;
-    char *buffer_start = (char *) malloc(buffer_size);
+    char *buffer_start = malloc(buffer_size);
+
+    if (!buffer_start) {
+        buffer_start = "";
+        buffer_size = 0;
+    }
+
     char *str_end = buffer_start;
     int curr_str_size = 0;
 
@@ -213,7 +239,11 @@ static void write_to_file_from_buffer(ChanFSObj *file_obj, StrRepBuffer str_buff
 
 static char *concat_tim_ext(Post *post)
 {
-    char *concat_file_str = (char *) malloc(strlen(post->tim) + strlen(post->ext) + 1);
+    char *concat_file_str = malloc(strlen(post->tim) + strlen(post->ext) + 1);
+    if (!concat_file_str) {
+        fprintf(stderr, "Error: Could not concatenate tim and ext strings as memory could not be allocated.\n");
+        return NULL;
+    }
     strcpy(concat_file_str, post->tim);
     strcat(concat_file_str, post->ext);
 
@@ -222,11 +252,16 @@ static char *concat_tim_ext(Post *post)
 
 static char *generate_time_string(time_t t) 
 {
-    char buffer[30];
+    char *buffer = malloc(30);
+    if (!buffer) {
+        fprintf(stderr, "Error: Could not allocate memory for time string.\n");
+        return NULL;
+    }
+
     struct tm *tm_st = localtime(&t);
     strftime(buffer, sizeof(buffer), "%x - %I:%M%p", tm_st);
 
-    return strdup(buffer);
+    return buffer;
 }
 
 static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
@@ -234,7 +269,13 @@ static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
     if (s2.curr_str_size + s1->curr_str_size + 1 > s1->buffer_size) {
         int new_buffer_size = s1->buffer_size + (s2.curr_str_size + 1) + 100;
         
-        s1->buffer_start = (char *) realloc(s1->buffer_start, new_buffer_size);
+        char *new_ptr = realloc(s1->buffer_start, new_buffer_size);
+        if (!new_ptr) {
+            fprintf(stderr, "Error: Cannot reallocate new buffer or StrRepBuffer");
+            return;            
+        }
+
+        s1->buffer_start = new_ptr;
         s1->str_end = s1->buffer_start + s1->curr_str_size;
         s1->buffer_size = new_buffer_size;
     }
@@ -251,15 +292,20 @@ static void append_to_buffer(StrRepBuffer *str_buffer, char *str)
 
 static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str) 
 {
-    if(str == NULL)
-        return;
+    if(!str) return;
 
     int size_of_str = snprintf(NULL, 0, str_formatter, str);
 
     if (str_buffer->curr_str_size + size_of_str + 1 > str_buffer->buffer_size) {
         int new_buffer_size = str_buffer->buffer_size + (size_of_str + 1) + 100;
 
-        str_buffer->buffer_start = (char *) realloc(str_buffer->buffer_start, new_buffer_size);
+        char *new_ptr = realloc(str_buffer->buffer_start, new_buffer_size);
+        if (!new_ptr) {
+            fprintf(stderr, "Error: Cannot reallocate new buffer or StrRepBuffer");
+            return;
+        }
+
+        str_buffer->buffer_start = new_ptr;
         str_buffer->str_end = str_buffer->buffer_start + str_buffer->curr_str_size;
         str_buffer->buffer_size = new_buffer_size;
     }
@@ -285,7 +331,12 @@ static char *set_thread_dir_name(Post *thread_op)
 
 static char *truncate_name(char *name) 
 {
-    char *trun_title_buffer = (char *) malloc(FILENAMELEN + 1);
+    char *trun_title_buffer = malloc(FILENAMELEN + 1);
+    if (!trun_title_buffer) {
+        fprintf(stderr, "Error: Could not allocate buffer for truncated title for %s\n", name);
+        return NULL;
+    }
+
     memcpy(trun_title_buffer, name, FILENAMELEN);
     trun_title_buffer[FILENAMELEN] = '\0';
 
@@ -295,6 +346,8 @@ static char *truncate_name(char *name)
 /*The issue with this is that we lose all of the backslash information. */
 static void sanitize_name(char *name) 
 {
+    if (!name) return;
+
     for (; *name != '\0'; name++)
         *name = (*name == '/') ? '#' : *name;
 }
@@ -304,8 +357,16 @@ static void add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
     Chandir *dir = (Chandir *) &(dir_fs_object->fs_obj);
 
     if (dir->num_of_children >= dir->num_of_children_slots) {
-        dir->num_of_children_slots += 50;
-        dir->children = (ChanFSObj **) realloc(dir->children, dir->num_of_children_slots * sizeof(ChanFSObj *));
+        int new_num_of_children_slots = dir->num_of_children_slots + 50;
+        ChanFSObj **obj_ptr = realloc(dir->children, new_num_of_children_slots * sizeof(ChanFSObj *));
+
+        if (!obj_ptr) {
+            fprintf(stderr, "Error: Memory reallocation failed for procedure to expand children slot for directory object.\n");
+            return;
+        }
+
+        dir->children = obj_ptr;
+        dir->num_of_children_slots = new_num_of_children_slots;
     }
 
     *(dir->children + dir->num_of_children) = child;
@@ -314,10 +375,10 @@ static void add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
     
 static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirtype type, AssoInfo asso_info)
 {
-    ChanFSObj *new_fs_obj = (ChanFSObj *) malloc(sizeof(ChanFSObj));
+    ChanFSObj *new_fs_obj = malloc(sizeof(ChanFSObj));
     if(!new_fs_obj) {
-        fprintf(stderr, "Error: could not allocate FS object.\n");
-        return NULL;        
+        fprintf(stderr, "Error: Could not allocate FS object.\n");
+        goto allo_fs_obj_fail;     
     } 
 
     new_fs_obj->base_mode = S_IFDIR;
@@ -330,27 +391,40 @@ static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirty
     new_fs_obj->generated_flag = 0;
     new_fs_obj->asso_info = asso_info;
 
-    ChanFSObj **children = (ChanFSObj **) malloc(50 * sizeof(ChanFSObj *)); //We work in increments of 50 objects.
+    ChanFSObj **children = malloc(INIT_NUM_CHILD_SLOTS * sizeof(ChanFSObj *));
+    if (!children) {
+        fprintf(stderr, "Error: Could not allocate array of children ChanFSObj pointers.\n");
+        goto allo_child_fail;
+    }
     
-    Chandir new_chandir = {children, 50, 0, type};
+    Chandir new_chandir = {children, INIT_NUM_CHILD_SLOTS, 0, type};
     new_fs_obj->fs_obj = (FSObj) new_chandir;
     
     if(parent_dir != NULL) {
-        if (parent_dir->base_mode != S_IFDIR)
-            fprintf(stderr, "Error: Attempting to add child FS object \"%s\" to a file or other.\n", name); //Bad error handling. Fix this.
+        if (parent_dir->base_mode != S_IFDIR) {
+            fprintf(stderr, "Error: Attempting to add child FS object \"%s\" to a file or other.\n", name);
+            goto add_to_file_fail;
+        }
         else 
             add_child(parent_dir, new_fs_obj);
     }
 
     return new_fs_obj;
+
+add_to_file_fail:
+    free(children);
+allo_child_fail:
+    free(new_fs_obj);
+allo_fs_obj_fail:
+    return NULL;
 }
 
 static ChanFSObj *init_file(char *name, ChanFSObj *curr_dir, time_t time, Filetype type, AssoInfo asso_info)
 {
-    ChanFSObj *new_fs_obj = (ChanFSObj *) malloc(sizeof(ChanFSObj));
+    ChanFSObj *new_fs_obj = malloc(sizeof(ChanFSObj));
     if(!new_fs_obj) {
-        fprintf(stderr, "Error: could not allocate FS object.\n");
-        return NULL;        
+        fprintf(stderr, "Error: could not allocate FS file object.\n");
+        goto allo_fs_obj_fail;        
     } 
 
     new_fs_obj->base_mode = S_IFREG;
@@ -366,12 +440,19 @@ static ChanFSObj *init_file(char *name, ChanFSObj *curr_dir, time_t time, Filety
     Chanfile new_chanfile = {0, curr_dir, type, {}};
     new_fs_obj->fs_obj = (FSObj) new_chanfile;
 
-    if (curr_dir->base_mode != S_IFDIR)
+    if (curr_dir->base_mode != S_IFDIR) {
         fprintf(stderr, "Error: Attempting to add child FS object \"%s\" to a file or other.\n", name);
+        goto add_to_file_fail;
+    }
     else 
         add_child(curr_dir, new_fs_obj);
 
     return new_fs_obj;
+
+add_to_file_fail:
+    free(new_fs_obj);
+allo_fs_obj_fail:
+    return NULL;
 }
 
 

@@ -9,6 +9,7 @@
 #include "include/fs.h"
 
 static ChanFSObj *traverse(const char *path);
+
 extern ChanFSObj *root;
 
 int do_getattr(const char *path, struct stat *st)
@@ -90,6 +91,11 @@ int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fu
 static ChanFSObj *traverse(const char *path)
 {
     char *pathcpy = strdup(path);
+    if (!pathcpy) {
+        fprintf(stderr, "Error: Could not allocate memory for traversal operation.\n");
+        return root;
+    }
+
     char *token = strtok(pathcpy, "/");
     
     ChanFSObj *traverse_ptr = root;
