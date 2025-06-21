@@ -10,7 +10,7 @@
 #define INIT_NUM_CHILD_SLOTS 50
 
 static char *truncate_name(char *name);
-static void add_child(ChanFSObj *dir, ChanFSObj *child);
+static int add_child(ChanFSObj *dir, ChanFSObj *child);
 static char *set_thread_dir_name(Post *thread_op);
 static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirtype type, AssoInfo asso_info);
 static ChanFSObj *init_file(char *name, ChanFSObj *curr_dir, time_t time, Filetype type, AssoInfo asso_info);
@@ -33,10 +33,18 @@ static char *concat_tim_ext(Post *post);
 ChanFSObj *generate_fs(char *board_strs[])
 {
     ChanFSObj *root_fs_obj = init_dir("/", NULL, time(NULL), ROOT_DIR, (AssoInfo)((Post *) NULL));
+    if(!root_fs_obj) {
+        fprintf(stderr, "Error: Could not allocate memory for root directory FS object.\n");
+        return NULL;
+    }
     root_fs_obj->generated_flag = 1;
     
+    ChanFSObj *board_dir_obj;
     while (*board_strs != NULL) {
-        init_dir(*board_strs, root_fs_obj, time(NULL), BOARD_DIR, (AssoInfo) *board_strs);
+        board_dir_obj = init_dir(*board_strs, root_fs_obj, time(NULL), BOARD_DIR, (AssoInfo) *board_strs);
+        if (!board_dir_obj) {
+            fprintf(stderr, "Error: Could not allocate memory for board directory FS object.\n");
+        }
         board_strs++;
     }
 
@@ -93,9 +101,8 @@ static void generate_post_dir(ChanFSObj *post_dir_object)
     init_file("Post.txt", post_dir_object, post->timestamp, POST_TEXT, post_dir_object->asso_info); //Add Post text to each reply directory.
 
     char *concat_name;
-    if (post->tim != NULL && post->ext != NULL && (concat_name = concat_tim_ext(post)) != NULL)  {
-        init_file(concat_name, post_dir_object, post->timestamp, ATTACHED_FILE, post_dir_object->asso_info); //Add Image file if it exists to each post directory.
-    }    
+    if (post->tim != NULL && post->ext != NULL && (concat_name = concat_tim_ext(post)) != NULL)
+        init_file(concat_name, post_dir_object, post->timestamp, ATTACHED_FILE, post_dir_object->asso_info); //Add Image file if it exists to each post directory.   
 }
 
 void generate_file_contents(ChanFSObj *file_obj)
@@ -347,12 +354,11 @@ static char *truncate_name(char *name)
 static void sanitize_name(char *name) 
 {
     if (!name) return;
-
     for (; *name != '\0'; name++)
         *name = (*name == '/') ? '#' : *name;
 }
 
-static void add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
+static int add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
 {   
     Chandir *dir = (Chandir *) &(dir_fs_object->fs_obj);
 
@@ -362,7 +368,7 @@ static void add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
 
         if (!obj_ptr) {
             fprintf(stderr, "Error: Memory reallocation failed for procedure to expand children slot for directory object.\n");
-            return;
+            return 0; // Do not add child if no memory can be allocated.
         }
 
         dir->children = obj_ptr;
@@ -371,6 +377,7 @@ static void add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
 
     *(dir->children + dir->num_of_children) = child;
     dir->num_of_children++;
+    return 1;
 }
     
 static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirtype type, AssoInfo asso_info)
@@ -405,8 +412,10 @@ static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirty
             fprintf(stderr, "Error: Attempting to add child FS object \"%s\" to a file or other.\n", name);
             goto add_to_file_fail;
         }
-        else 
-            add_child(parent_dir, new_fs_obj);
+        else {
+            if(!add_child(parent_dir, new_fs_obj))
+                goto add_to_file_fail;
+        }
     }
 
     return new_fs_obj;
@@ -444,8 +453,10 @@ static ChanFSObj *init_file(char *name, ChanFSObj *curr_dir, time_t time, Filety
         fprintf(stderr, "Error: Attempting to add child FS object \"%s\" to a file or other.\n", name);
         goto add_to_file_fail;
     }
-    else 
-        add_child(curr_dir, new_fs_obj);
+    else {
+        if(!add_child(curr_dir, new_fs_obj))
+            goto add_to_file_fail;
+    }
 
     return new_fs_obj;
 

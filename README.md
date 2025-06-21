@@ -1,2 +1,2 @@
 # chanfs
-A filesystem to browse image boards
+A filesystem to browse vichan-based imageboards.
