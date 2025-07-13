@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
 }
 
 /* Parse out the board name from the backslashes. */
-static char* get_board_name(char *board_str) {
+static char *get_board_name(char *board_str) {
     char *end_slash_ptr = board_str + 1;
     char *start_slash_ptr = board_str + 1;
 

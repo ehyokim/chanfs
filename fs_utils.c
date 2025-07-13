@@ -20,9 +20,8 @@ static StrRepBuffer generate_post_str_rep(Post *post);
 static StrRepBuffer generate_thread_str_rep(Thread thread);
 static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str);
 static void append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len);
-static void flush_to_str_rep_buffer(StrRepBuffer *str_buffer);
 static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer);
-static void copy_str_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len);
+static void check_buffer_dims(StrRepBuffer *str_buffer, int str_len);
 static char *generate_time_string(time_t t);
 static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2);
 static void generate_thread_dir(ChanFSObj *thread_dir_object);
@@ -230,7 +229,7 @@ static StrRepBuffer generate_post_str_rep(Post *post)
 
 static StrRepBuffer new_str_rep_buffer(void) 
 {
-    int buffer_size = 100;
+    int buffer_size = 100; // Prob should turn this into a constant.
     char *buffer_start = malloc(buffer_size);
 
     if (!buffer_start) {
@@ -238,7 +237,7 @@ static StrRepBuffer new_str_rep_buffer(void)
         buffer_size = 0;
     }
 
-    return (StrRepBuffer) {buffer_size, 0, buffer_start, buffer_start};
+    return (StrRepBuffer) {buffer_size, 0, 0, buffer_start, buffer_start};
 }
 
 static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file)
@@ -288,56 +287,51 @@ static char *generate_time_string(time_t t)
 /* Concatenates two string rep buffers together. */
 static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
 {
-    copy_str_to_buffer(s1, s2.buffer_start, s2.curr_str_size);
+    check_buffer_dims(s1, s2.curr_str_size);
+    memcpy(s1->str_end, s2.buffer_start, s2.curr_str_size);
+    s1->str_end += s2.curr_str_size;
+    s1->curr_str_size += s2.curr_str_size;   
 }
-
-/* These will be the buffers which control the column width of the output onto the text files. */
-static char str_rep_buffer[MAX_NUM_COLS];
-static int buffer_str_len;
 
 /* Takes a string and appends to the supplied string representation buffer. The number of columns is controlled by a static output buffer. */
 static void append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
 {
+    check_buffer_dims(str_buffer, str_len + (str_len / MAX_NUM_COLS + 1));
 
-    /* We do not consider the nul character at the end of str. The nul character will be appended by the flush function at the end. */
-    for (int i = 0; i < str_len ; i++) {
-        str_rep_buffer[buffer_str_len] = str[i];
-        buffer_str_len++;
+    char *tail_ptr = str_buffer->str_end;
+     /* We do not consider the nul character at the end of str. The nul character will be appended at the end. */
+    int i = 0;
+    while (i < str_len) {
+        *tail_ptr++ = *str;
+        str_buffer->col_limit = (*str == '\n') ? 0 : ++str_buffer->col_limit;    
 
-        if (str[i] == '\n')
-            flush_to_str_rep_buffer(str_buffer);
-
-        else if (buffer_str_len == MAX_NUM_COLS - 1) {
-            str_rep_buffer[buffer_str_len] = '\n';
-            buffer_str_len++;
-            flush_to_str_rep_buffer(str_buffer);
+        if (str_buffer->col_limit == MAX_NUM_COLS) {
+            *tail_ptr++ = '\n';
+            str_buffer->col_limit = 0;
         }
-   }
-   
+        i++, str++;
+   }  
+
+    str_buffer->curr_str_size += (tail_ptr - str_buffer->str_end);  
+    str_buffer->str_end = tail_ptr;
+   *str_buffer->str_end = '\0'; //Append nul character.      
 }
 
 /* Append a divider to the text file represented by the supplied string representaion buffer. */
 static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
 {
-    flush_to_str_rep_buffer(str_buffer);
+    check_buffer_dims(str_buffer, MAX_NUM_COLS);
 
-    str_rep_buffer[0] = str_rep_buffer[MAX_NUM_COLS - 1] = '\n';
-    memset(str_rep_buffer + 1, '-', MAX_NUM_COLS - 2);
-    buffer_str_len = MAX_NUM_COLS;
+    char *tail_ptr = str_buffer->str_end;
+    *tail_ptr = *(tail_ptr + MAX_NUM_COLS - 1) = '\n';
+    memset(tail_ptr + 1, '-', MAX_NUM_COLS - 2);
 
-    flush_to_str_rep_buffer(str_buffer);
+    str_buffer->str_end += MAX_NUM_COLS;
+    str_buffer->curr_str_size += MAX_NUM_COLS;
+    str_buffer->col_limit = 0;
 }
 
-/* Flushes the output buffer controlling the number of columns to the supplied string representation buffer. */
-static void flush_to_str_rep_buffer(StrRepBuffer *str_buffer) 
-{
-    copy_str_to_buffer(str_buffer, str_rep_buffer, buffer_str_len);
-    *str_buffer->str_end = '\0'; //Append nul character. 
-    buffer_str_len = 0; //Reset the buffer.
-}
-
-/* An auxiliary function taking a string representation buffer and concatenating a string on its end */
-static void copy_str_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len) 
+static void check_buffer_dims(StrRepBuffer *str_buffer, int str_len) 
 {
     if (str_buffer->curr_str_size + str_len + 1 > str_buffer->buffer_size) {
         int new_buffer_size = str_buffer->buffer_size + (str_len + 1) + 100;
@@ -351,11 +345,7 @@ static void copy_str_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
         str_buffer->buffer_start = new_ptr;
         str_buffer->str_end = str_buffer->buffer_start + str_buffer->curr_str_size;
         str_buffer->buffer_size = new_buffer_size;
-    }
-
-    memcpy(str_buffer->str_end, str, str_len);
-    str_buffer->str_end += str_len;
-    str_buffer->curr_str_size += str_len;    
+    } 
 }
 
 /* An auxiliary function used to generate post and thread text files. 
