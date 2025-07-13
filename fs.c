@@ -8,19 +8,20 @@
 #include "include/fs_utils.h"
 #include "include/fs.h"
 
-static ChanFSObj *traverse(const char *path);
-
 extern ChanFSObj *root;
 
+static ChanFSObj *traverse(const char *path);
+
+/* The FUSE getattr function */
 int do_getattr(const char *path, struct stat *st)
 {
-    printf("Querying: %s\n", path);
+    //printf("Querying: %s\n", path);
     ChanFSObj *found_obj = traverse(path);
     if (!found_obj) 
         return -ENOENT;
 
     if (found_obj->base_mode == S_IFREG) {
-        if (!(found_obj->generated_flag))
+        if (!(found_obj->generated_flag)) //Generate the contents of files and directories as needed.
             generate_file_contents(found_obj);
             
         Chanfile obj = found_obj->fs_obj.chanfile;
@@ -38,13 +39,14 @@ int do_getattr(const char *path, struct stat *st)
     return 0;
 }
 
+/* The FUSE readdir function */
 int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
-    printf("Reading directory: %s \n", path);
+    //printf("Reading directory: %s \n", path);
     filler(buffer, ".", NULL, 0);
     filler(buffer, "..", NULL, 0);
 
-    ChanFSObj *found_obj = traverse(path);
+    ChanFSObj *found_obj = traverse(path); //Traverse the FS to find the directory.
     if (!found_obj)
         return -ENOENT;
 
@@ -53,6 +55,7 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t off
 
     Chandir dir = found_obj->fs_obj.chandir;
 
+    /* Iterate through all of the children (files and directories) found under this directory. */
     int num_of_children = dir.num_of_children;
     ChanFSObj **children = dir.children;
 
@@ -64,9 +67,10 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t off
     return 0;
 }
 
+/* The FUSE read function */
 int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    printf("Readfile called with path: %s\n", path);
+    //printf("Readfile called with path: %s\n", path);
 
     ChanFSObj *found_obj = traverse(path);
     if (!found_obj)
@@ -81,13 +85,15 @@ int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fu
     if (offset > file_size) 
         return -EINVAL;
 
+    /* Access the file contents and copy them onto the buffer. */
     char *contents = file.contents;
-    size_t bytes_read = (offset + size > file_size) ? file_size - offset : size; //Adding offset and size is probably not a good idea.
+    size_t bytes_read = (offset + size > file_size) ? file_size - offset : size;
 
     memcpy(buffer, contents + offset, bytes_read);
     return bytes_read;
 }
 
+/* Function to traverse the FS according to a supplied path. */
 static ChanFSObj *traverse(const char *path)
 {
     char *pathcpy = strdup(path);
@@ -96,12 +102,11 @@ static ChanFSObj *traverse(const char *path)
         return root;
     }
 
+    /* Tokenize the path and follow each step of the way down. */
     char *token = strtok(pathcpy, "/");
-    
     ChanFSObj *traverse_ptr = root;
 
     while (token != NULL) {
-
         if (traverse_ptr->base_mode != S_IFDIR) {
             fprintf(stderr, "Error: attempting to traverse over a file or other.\n");
             return NULL;
@@ -121,7 +126,7 @@ static ChanFSObj *traverse(const char *path)
             }
         }
 
-        if (found_obj == NULL) {
+        if (!found_obj) {
             //fprintf(stderr, "Error: no such file or directory with the name: %s was found.\n", token);
             return NULL;
         }

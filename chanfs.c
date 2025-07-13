@@ -13,7 +13,7 @@
 
 static char* get_board_name(char *board_str);
 
-ChanFSObj *root;
+/* */
 char *chan;
 
 static struct fuse_operations operations = {
@@ -26,46 +26,51 @@ int main(int argc, char *argv[])
 {   
     curl_global_init(CURL_GLOBAL_ALL);
 
-    char *board_strs[MAXNUMBOARDS];
-    char *fuse_arg_strs[MAXNUMFUSEARGS];
-    int next_chanfs_idx = 0;
-    int next_fuse_idx = 0;
+    char *board_strs[argc-1];
+    char *fuse_arg_strs[argc-1];
+    int board_idx = 0, fuse_idx = 0;
     chan = NULL;
 
-    /* Divide out the arguments into those that feed into chanfs and those that feed into fuse_main. */
-    int i;
+    /* Divide out the arguments into those that feed into chanfs and those that feed into fuse_main. 
+       There are not many arguments to give as input here, so we chose to opt for a manual approach. 
+    */
+    int i, len;
     char *arg;
-    int len;
-    char *board_name = NULL;
-    for (i = 0; i < argc && next_chanfs_idx < MAXNUMBOARDS; i++) {
+    for (i = 0; i < argc; i++) {
         arg = argv[i];
-        len = strlen(arg);
-        if (arg[0] == '-' && arg[1] == '/' && arg[len - 1] == '/') { //Check if the argument is a board.
-            board_strs[next_chanfs_idx++] = board_name = get_board_name(argv[i] + 1);
-            if (!board_name) return -1;
-        }         
-        else if (arg[0] == '-' && arg[1] == 'l') { //Check if argument is a link to an imageboard.
-            chan = argv[++i];
-        }
-        else
-            fuse_arg_strs[next_fuse_idx++] = argv[i];
-    }
+
+        if(arg[0] == '-') {
+            switch (arg[1]) {
+                case '/':
+                    len = strlen(arg);
+                    if (arg[len - 1] != '/') {
+                        fprintf(stderr, "Error: malformed board argument. Exiting.");
+                        exit(-1);
+                    }
+                    board_strs[board_idx++] = get_board_name(arg + 1);
+                    break;
+                case 'c':
+                    chan = argv[++i];
+                    break;
+                default:
+                    break;
+            }
+        } else 
+            fuse_arg_strs[fuse_idx++] = arg;
+    }         
 
     if (!chan) {
-        fprintf(stderr, "No imageboard url was provided. Exiting.\n");
-        return -1;
+        fprintf(stderr, "Error: no imageboard url was provided. Exiting.\n");
+        exit(0);
     }
     
-    board_strs[next_chanfs_idx] = NULL;
-    fuse_arg_strs[next_fuse_idx] = NULL;
+    board_strs[board_idx] = NULL;
+    fuse_arg_strs[fuse_idx] = NULL;
 
-    root = generate_fs(board_strs);
-    if(!root) {
-        fprintf(stderr, "Exiting.\n");
-        return -1;
-    }
+    /* Generate the FS from the supplied board names. */
+    generate_fs(board_strs);
 
-    int fuse_res = fuse_main(next_fuse_idx, fuse_arg_strs, &operations, NULL);
+    int fuse_res = fuse_main(fuse_idx, fuse_arg_strs, &operations, NULL);
 
     curl_global_cleanup();
     return fuse_res;
@@ -77,16 +82,7 @@ static char* get_board_name(char *board_str) {
     char *start_slash_ptr = board_str + 1;
 
     for (; *end_slash_ptr != '/' ; end_slash_ptr++); 
-    size_t size_of_name = end_slash_ptr - start_slash_ptr;
-
-    char *board_name = (char *) malloc(size_of_name + 1);
-    if(!board_name) {
-        fprintf(stderr, "Error: Could not allocate memory for board name.\n");
-        return NULL;
-    }
-
-    memcpy(board_name, start_slash_ptr, size_of_name);
-    board_name[size_of_name] = '\0';
-
-    return board_name;
+    
+    *end_slash_ptr = '\0';
+    return start_slash_ptr;
 }

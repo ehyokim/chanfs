@@ -8,6 +8,7 @@
 #include "include/fs_utils.h"
 
 #define INIT_NUM_CHILD_SLOTS 50
+#define MAX_NUM_COLS 100
 
 static char *truncate_name(char *name);
 static int add_child(ChanFSObj *dir, ChanFSObj *child);
@@ -18,7 +19,10 @@ static void sanitize_name(char *name);
 static StrRepBuffer generate_post_str_rep(Post *post);
 static StrRepBuffer generate_thread_str_rep(Thread thread);
 static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str);
-static void append_to_buffer(StrRepBuffer *str_buffer, char *str);
+static void append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len);
+static void flush_to_str_rep_buffer(StrRepBuffer *str_buffer);
+static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer);
+static void copy_str_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len);
 static char *generate_time_string(time_t t);
 static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2);
 static void generate_thread_dir(ChanFSObj *thread_dir_object);
@@ -29,28 +33,31 @@ static void write_to_file_from_buffer(ChanFSObj *file_obj, StrRepBuffer str_buff
 static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file);
 static char *concat_tim_ext(Post *post);
 
+ChanFSObj *root;
 
-ChanFSObj *generate_fs(char *board_strs[])
+/* Generates the initial root directory and instantiates the FS. */
+void generate_fs(char *board_strs[])
 {
-    ChanFSObj *root_fs_obj = init_dir("/", NULL, time(NULL), ROOT_DIR, (AssoInfo)((Post *) NULL));
-    if(!root_fs_obj) {
+    root = init_dir("/", NULL, time(NULL), ROOT_DIR, (AssoInfo)((Post *) NULL));
+    if (!root) {
         fprintf(stderr, "Error: Could not allocate memory for root directory FS object.\n");
-        return NULL;
+        exit(-1);
     }
-    root_fs_obj->generated_flag = 1;
+    root->generated_flag = 1;
     
+    /* Generate all of the board directories housing all of the threads. */
     ChanFSObj *board_dir_obj;
     while (*board_strs != NULL) {
-        board_dir_obj = init_dir(*board_strs, root_fs_obj, time(NULL), BOARD_DIR, (AssoInfo) *board_strs);
+        board_dir_obj = init_dir(*board_strs, root, time(NULL), BOARD_DIR, (AssoInfo) *board_strs);
         if (!board_dir_obj) {
             fprintf(stderr, "Error: Could not allocate memory for board directory FS object.\n");
         }
         board_strs++;
     }
-
-    return root_fs_obj;
 }
 
+/* Given a dir FS object corresponding to a board directory, generate all of the directories 
+   corresponding to threads living within that board. */
 static void generate_board_dir(ChanFSObj *board_dir_object) 
 {
     char *board = board_dir_object->asso_info.board;
@@ -71,6 +78,7 @@ static void generate_board_dir(ChanFSObj *board_dir_object)
     }
 }
 
+/* Given a dir FS object corresponding to a thread directory, generate all of post directories and the thread.txt */
 static void generate_thread_dir(ChanFSObj *thread_dir_object) 
 {   
         Post* thread_op = thread_dir_object->asso_info.post;
@@ -79,10 +87,10 @@ static void generate_thread_dir(ChanFSObj *thread_dir_object)
         Thread thread_replies = parse_thread(board, thread_op->no);
         int num_of_replies = thread_replies.num_of_replies;
 
-        init_file("Thread.txt", thread_dir_object, thread_op->timestamp, THREAD_OP_TEXT, (AssoInfo) thread_replies);
+        init_file("Thread.txt", thread_dir_object, thread_op->timestamp, THREAD_OP_TEXT, (AssoInfo) thread_replies); //Add thread.txt
 
         char *concat_name;
-        if(thread_op->tim != NULL && thread_op->ext != NULL && (concat_name = concat_tim_ext(thread_op)) != NULL)
+        if (thread_op->tim != NULL && thread_op->ext != NULL && (concat_name = concat_tim_ext(thread_op)) != NULL)
             init_file(concat_name, thread_dir_object, thread_op->timestamp, ATTACHED_FILE, thread_dir_object->asso_info);     
 
         Post *replies = thread_replies.posts;
@@ -90,11 +98,12 @@ static void generate_thread_dir(ChanFSObj *thread_dir_object)
             Post *reply = replies + k;
             char *thread_no_str = thread_int_to_str(reply->no);
 
-            if(thread_no_str != NULL)
+            if (thread_no_str != NULL)
                 init_dir(thread_no_str, thread_dir_object, reply->timestamp, POST_DIR, (AssoInfo) reply); //Create post directory.
         }
 }
 
+/* Generate the post directory including its post.txt and any attached files. */
 static void generate_post_dir(ChanFSObj *post_dir_object)
 {
     Post *post = post_dir_object->asso_info.post;
@@ -105,6 +114,7 @@ static void generate_post_dir(ChanFSObj *post_dir_object)
         init_file(concat_name, post_dir_object, post->timestamp, ATTACHED_FILE, post_dir_object->asso_info); //Add Image file if it exists to each post directory.   
 }
 
+/* Generate the contents of a given file FS object to be handed over to FUSE. */
 void generate_file_contents(ChanFSObj *file_obj)
 {       
         Chanfile file = file_obj->fs_obj.chanfile;
@@ -134,6 +144,7 @@ void generate_file_contents(ChanFSObj *file_obj)
         file_obj->generated_flag = 1;
 }
 
+/* Generate the contents of a given directory FS object to be handed over to FUSE. */
 void generate_dir_contents(ChanFSObj *dir_obj)
 {
     Chandir dir = dir_obj->fs_obj.chandir;    
@@ -150,8 +161,8 @@ void generate_dir_contents(ChanFSObj *dir_obj)
             generate_board_dir(dir_obj);
             break;
         case ROOT_DIR:
+        default:
             break;
-            //Do nothing for now.
     }
     dir_obj->generated_flag = 1;    
 }
@@ -172,17 +183,20 @@ static StrRepBuffer generate_thread_str_rep(Thread thread)
         return thread_str_buffer;
     } 
 
+    flush_divider_to_str_rep_buffer(&thread_str_buffer);
+
     StrRepBuffer reply_str_buffer;
     for (int i = 1; i < thread.num_of_replies; i++) {
-        append_to_buffer(&thread_str_buffer, "\n\n---------------------------\n\n");
         reply_str_buffer = generate_post_str_rep(replies + i);
         concat_str_rep_buffers(&thread_str_buffer, reply_str_buffer);
         free_str_rep_buffer(reply_str_buffer);
+        flush_divider_to_str_rep_buffer(&thread_str_buffer);
     }
 
     return thread_str_buffer;
 }
 
+/* Generate the string representation of a chan post. */
 static StrRepBuffer generate_post_str_rep(Post *post) 
 {
     StrRepBuffer buffer = new_str_rep_buffer();
@@ -224,11 +238,7 @@ static StrRepBuffer new_str_rep_buffer(void)
         buffer_size = 0;
     }
 
-    char *str_end = buffer_start;
-    int curr_str_size = 0;
-
-    return (StrRepBuffer) {buffer_size, curr_str_size, buffer_start, str_end};
-
+    return (StrRepBuffer) {buffer_size, 0, buffer_start, buffer_start};
 }
 
 static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file)
@@ -238,12 +248,14 @@ static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile a
     file->size = attached_file.size;
 }
 
+/* A simple function that just sets a file FS object's contents to some aggregate string representation buffer. */
 static void write_to_file_from_buffer(ChanFSObj *file_obj, StrRepBuffer str_buffer) {
     Chanfile *file = (Chanfile *) &(file_obj->fs_obj);    
     file->contents = str_buffer.buffer_start;
     file->size = str_buffer.curr_str_size;
 }
 
+/* Concatenates the name of an attached file associated with a post and its extention together. */
 static char *concat_tim_ext(Post *post)
 {
     char *concat_file_str = malloc(strlen(post->tim) + strlen(post->ext) + 1);
@@ -251,12 +263,14 @@ static char *concat_tim_ext(Post *post)
         fprintf(stderr, "Error: Could not concatenate tim and ext strings as memory could not be allocated.\n");
         return NULL;
     }
+
     strcpy(concat_file_str, post->tim);
     strcat(concat_file_str, post->ext);
 
     return concat_file_str;
 }
 
+/* Generates a string representing a point in time from a time_t data type. */
 static char *generate_time_string(time_t t) 
 {
     char *buffer = malloc(30);
@@ -271,40 +285,62 @@ static char *generate_time_string(time_t t)
     return buffer;
 }
 
+/* Concatenates two string rep buffers together. */
 static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
 {
-    if (s2.curr_str_size + s1->curr_str_size + 1 > s1->buffer_size) {
-        int new_buffer_size = s1->buffer_size + (s2.curr_str_size + 1) + 100;
-        
-        char *new_ptr = realloc(s1->buffer_start, new_buffer_size);
-        if (!new_ptr) {
-            fprintf(stderr, "Error: Cannot reallocate new buffer or StrRepBuffer");
-            return;            
+    copy_str_to_buffer(s1, s2.buffer_start, s2.curr_str_size);
+}
+
+/* These will be the buffers which control the column width of the output onto the text files. */
+static char str_rep_buffer[MAX_NUM_COLS];
+static int buffer_str_len;
+
+/* Takes a string and appends to the supplied string representation buffer. The number of columns is controlled by a static output buffer. */
+static void append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
+{
+
+    /* We do not consider the nul character at the end of str. The nul character will be appended by the flush function at the end. */
+    for (int i = 0; i < str_len ; i++) {
+        str_rep_buffer[buffer_str_len] = str[i];
+        buffer_str_len++;
+
+        if (str[i] == '\n')
+            flush_to_str_rep_buffer(str_buffer);
+
+        else if (buffer_str_len == MAX_NUM_COLS - 1) {
+            str_rep_buffer[buffer_str_len] = '\n';
+            buffer_str_len++;
+            flush_to_str_rep_buffer(str_buffer);
         }
-
-        s1->buffer_start = new_ptr;
-        s1->str_end = s1->buffer_start + s1->curr_str_size;
-        s1->buffer_size = new_buffer_size;
-    }
-
-    sprintf(s1->str_end, "%s", s2.buffer_start);
-    s1->curr_str_size += s2.curr_str_size;
-    s1->str_end += s2.curr_str_size;
+   }
+   
 }
 
-static void append_to_buffer(StrRepBuffer *str_buffer, char *str)
+/* Append a divider to the text file represented by the supplied string representaion buffer. */
+static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
 {
-    append_to_buffer_formatted(str_buffer, "%s", str);
+    flush_to_str_rep_buffer(str_buffer);
+
+    str_rep_buffer[0] = str_rep_buffer[MAX_NUM_COLS - 1] = '\n';
+    memset(str_rep_buffer + 1, '-', MAX_NUM_COLS - 2);
+    buffer_str_len = MAX_NUM_COLS;
+
+    flush_to_str_rep_buffer(str_buffer);
 }
 
-static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str) 
+/* Flushes the output buffer controlling the number of columns to the supplied string representation buffer. */
+static void flush_to_str_rep_buffer(StrRepBuffer *str_buffer) 
 {
-    if(!str) return;
+    copy_str_to_buffer(str_buffer, str_rep_buffer, buffer_str_len);
+    *str_buffer->str_end = '\0'; //Append nul character. 
+    buffer_str_len = 0; //Reset the buffer.
+}
 
-    int size_of_str = snprintf(NULL, 0, str_formatter, str);
-
-    if (str_buffer->curr_str_size + size_of_str + 1 > str_buffer->buffer_size) {
-        int new_buffer_size = str_buffer->buffer_size + (size_of_str + 1) + 100;
+/* An auxiliary function taking a string representation buffer and concatenating a string on its end */
+static void copy_str_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len) 
+{
+    if (str_buffer->curr_str_size + str_len + 1 > str_buffer->buffer_size) {
+        int new_buffer_size = str_buffer->buffer_size + (str_len + 1) + 100;
 
         char *new_ptr = realloc(str_buffer->buffer_start, new_buffer_size);
         if (!new_ptr) {
@@ -317,11 +353,30 @@ static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_forma
         str_buffer->buffer_size = new_buffer_size;
     }
 
-    sprintf(str_buffer->str_end, str_formatter, str);
-    str_buffer->str_end += size_of_str;
-    str_buffer->curr_str_size += size_of_str;
+    memcpy(str_buffer->str_end, str, str_len);
+    str_buffer->str_end += str_len;
+    str_buffer->curr_str_size += str_len;    
 }
 
+/* An auxiliary function used to generate post and thread text files. 
+   This is used to append a formatted string to a string representation buffer. */
+static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str) 
+{
+    if(!str) return;
+
+    size_t size_of_str = snprintf(NULL, 0, str_formatter, str);
+
+    char *formatted_str = malloc(size_of_str + 1);
+    if (!formatted_str)
+        fprintf(stderr, "Error: Could not allocate memory for formatted output string");
+
+    sprintf(formatted_str, str_formatter, str);
+    append_to_buffer(str_buffer, formatted_str, size_of_str);
+    free(formatted_str);
+}
+
+
+/*  Sets the name of directories containing thread information. */
 static char *set_thread_dir_name(Post *thread_op)
 {   
     char *untreated_dir_name;
@@ -331,11 +386,13 @@ static char *set_thread_dir_name(Post *thread_op)
     else
         untreated_dir_name = "No Subject";
     
-    char * treated_dir_name;
-    sanitize_name(treated_dir_name = truncate_name(untreated_dir_name));
+    char *treated_dir_name = truncate_name(untreated_dir_name);
+    sanitize_name(treated_dir_name);
     return treated_dir_name;
 }
 
+/* The strings used for titles of files and directories are truncated down to size 
+    to encourage readability and to reduce clutter. */
 static char *truncate_name(char *name) 
 {
     char *trun_title_buffer = malloc(FILENAMELEN + 1);
@@ -350,7 +407,9 @@ static char *truncate_name(char *name)
     return trun_title_buffer;
 }
 
-/*The issue with this is that we lose all of the backslash information. */
+/* Used to replace any backslashes found in the filenames with a '#' character.
+This is a hacky way to ensure that the filenames do not interfere with the absolute pathname. 
+The issue with this is that we lose all of the backslash information. */
 static void sanitize_name(char *name) 
 {
     if (!name) return;
@@ -358,6 +417,9 @@ static void sanitize_name(char *name)
         *name = (*name == '/') ? '#' : *name;
 }
 
+/*
+Adding any child file or directory underneath a supplied directory FS object.
+*/
 static int add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
 {   
     Chandir *dir = (Chandir *) &(dir_fs_object->fs_obj);
@@ -379,11 +441,12 @@ static int add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
     dir->num_of_children++;
     return 1;
 }
-    
+
+/* Directory FS objects are initialized and added to a parent directory. The appropriate attributes are also set */
 static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirtype type, AssoInfo asso_info)
 {
     ChanFSObj *new_fs_obj = malloc(sizeof(ChanFSObj));
-    if(!new_fs_obj) {
+    if (!new_fs_obj) {
         fprintf(stderr, "Error: Could not allocate FS object.\n");
         goto allo_fs_obj_fail;     
     } 
@@ -407,7 +470,7 @@ static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirty
     Chandir new_chandir = {children, INIT_NUM_CHILD_SLOTS, 0, type};
     new_fs_obj->fs_obj = (FSObj) new_chandir;
     
-    if(parent_dir != NULL) {
+    if (parent_dir != NULL) {
         if (parent_dir->base_mode != S_IFDIR) {
             fprintf(stderr, "Error: Attempting to add child FS object \"%s\" to a file or other.\n", name);
             goto add_to_file_fail;
@@ -422,16 +485,20 @@ static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirty
 
 add_to_file_fail:
     free(children);
+	
 allo_child_fail:
     free(new_fs_obj);
+
 allo_fs_obj_fail:
     return NULL;
 }
 
+
+/* File FS objects are initialized and added to a parent directory. The appropriate attributes are also set */
 static ChanFSObj *init_file(char *name, ChanFSObj *curr_dir, time_t time, Filetype type, AssoInfo asso_info)
 {
     ChanFSObj *new_fs_obj = malloc(sizeof(ChanFSObj));
-    if(!new_fs_obj) {
+    if (!new_fs_obj) {
         fprintf(stderr, "Error: could not allocate FS file object.\n");
         goto allo_fs_obj_fail;        
     } 
@@ -462,6 +529,7 @@ static ChanFSObj *init_file(char *name, ChanFSObj *curr_dir, time_t time, Filety
 
 add_to_file_fail:
     free(new_fs_obj);
+
 allo_fs_obj_fail:
     return NULL;
 }

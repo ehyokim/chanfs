@@ -63,7 +63,7 @@ struct ChanFSObj {
 };
 
 
-ChanFSObj *generate_fs(char *board_strs[]);
+void generate_fs(char *board_strs[]);
 void generate_file_contents(ChanFSObj *file_obj);
 void generate_dir_contents(ChanFSObj *dir_obj);
 void free_str_rep_buffer(StrRepBuffer str_buffer);
