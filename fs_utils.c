@@ -45,9 +45,8 @@ void generate_fs(char *board_strs[])
     root->generated_flag = 1;
     
     /* Generate all of the board directories housing all of the threads. */
-    ChanFSObj *board_dir_obj;
     while (*board_strs != NULL) {
-        board_dir_obj = init_dir(*board_strs, root, time(NULL), BOARD_DIR, (AssoInfo) *board_strs);
+        ChanFSObj *board_dir_obj = init_dir(*board_strs, root, time(NULL), BOARD_DIR, (AssoInfo) *board_strs);
         if (!board_dir_obj) {
             fprintf(stderr, "Error: Could not allocate memory for board directory FS object.\n");
         }
@@ -72,8 +71,9 @@ static void generate_board_dir(ChanFSObj *board_dir_object)
         Post *thread_op = results.threads + i;
         char *thread_dir_name = set_thread_dir_name(thread_op);
 
-        if(thread_dir_name != NULL)            
+        if(thread_dir_name != NULL) {         
             init_dir(thread_dir_name, board_dir_object, thread_op->timestamp, THREAD_DIR, (AssoInfo) thread_op);
+        }
     }
 }
 
@@ -88,17 +88,19 @@ static void generate_thread_dir(ChanFSObj *thread_dir_object)
 
         init_file("Thread.txt", thread_dir_object, thread_op->timestamp, THREAD_OP_TEXT, (AssoInfo) thread_replies); //Add thread.txt
 
-        char *concat_name;
-        if (thread_op->tim != NULL && thread_op->ext != NULL && (concat_name = concat_tim_ext(thread_op)) != NULL)
+        char *concat_name = concat_tim_ext(thread_op);
+        if ((thread_op->tim != NULL) && (thread_op->ext != NULL) && (concat_name != NULL)) {
             init_file(concat_name, thread_dir_object, thread_op->timestamp, ATTACHED_FILE, thread_dir_object->asso_info);     
+        }
 
         Post *replies = thread_replies.posts;
         for (int k = 1; k < num_of_replies; k++) { //Skip first post, which is OP.
             Post *reply = replies + k;
             char *thread_no_str = thread_int_to_str(reply->no);
 
-            if (thread_no_str != NULL)
-                init_dir(thread_no_str, thread_dir_object, reply->timestamp, POST_DIR, (AssoInfo) reply); //Create post directory.
+            if (thread_no_str != NULL) {
+                init_dir(thread_no_str, thread_dir_object, reply->timestamp, POST_DIR, (AssoInfo) reply); //Create post directory
+            }
         }
 }
 
@@ -184,9 +186,8 @@ static StrRepBuffer generate_thread_str_rep(Thread thread)
 
     flush_divider_to_str_rep_buffer(&thread_str_buffer);
 
-    StrRepBuffer reply_str_buffer;
     for (int i = 1; i < thread.num_of_replies; i++) {
-        reply_str_buffer = generate_post_str_rep(replies + i);
+        StrRepBuffer reply_str_buffer = generate_post_str_rep(replies + i);
         concat_str_rep_buffers(&thread_str_buffer, reply_str_buffer);
         free_str_rep_buffer(reply_str_buffer);
         flush_divider_to_str_rep_buffer(&thread_str_buffer);
@@ -323,12 +324,12 @@ static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
     check_buffer_dims(str_buffer, MAX_NUM_COLS);
 
     char *tail_ptr = str_buffer->str_end;
-    *tail_ptr = *(tail_ptr + MAX_NUM_COLS - 1) = '\n';
+    *tail_ptr = *(tail_ptr + MAX_NUM_COLS - 1) = '\n'; //Insert the divider into the buffer.
     memset(tail_ptr + 1, '-', MAX_NUM_COLS - 2);
 
-    str_buffer->str_end += MAX_NUM_COLS;
+    str_buffer->str_end += MAX_NUM_COLS; //Update the end-of-string pointer and the size of the string.
     str_buffer->curr_str_size += MAX_NUM_COLS;
-    str_buffer->col_limit = 0;
+    str_buffer->col_limit = 0; //Reset the column limit
 }
 
 static void check_buffer_dims(StrRepBuffer *str_buffer, int str_len) 
@@ -357,8 +358,9 @@ static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_forma
     size_t size_of_str = snprintf(NULL, 0, str_formatter, str);
 
     char *formatted_str = malloc(size_of_str + 1);
-    if (!formatted_str)
+    if (!formatted_str) {
         fprintf(stderr, "Error: Could not allocate memory for formatted output string");
+    }
 
     sprintf(formatted_str, str_formatter, str);
     append_to_buffer(str_buffer, formatted_str, size_of_str);
@@ -373,8 +375,9 @@ static char *set_thread_dir_name(Post *thread_op)
 
     if ((untreated_dir_name = thread_op->sub) != NULL);
     else if((untreated_dir_name = thread_op->com) != NULL);
-    else
+    else {
         untreated_dir_name = "No Subject";
+    }
     
     char *treated_dir_name = truncate_name(untreated_dir_name);
     sanitize_name(treated_dir_name);
@@ -427,7 +430,7 @@ static int add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
         dir->num_of_children_slots = new_num_of_children_slots;
     }
 
-    *(dir->children + dir->num_of_children) = child;
+  *(dir->children + dir->num_of_children) = child;
     dir->num_of_children++;
     return 1;
 }
