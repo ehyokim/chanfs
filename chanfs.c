@@ -1,3 +1,5 @@
+#define FUSE_USE_VERSION 30
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,13 +10,12 @@
 #include "include/fs_utils.h"
 #include "include/fs.h"
 
-#define MAXNUMBOARDS 500 // Maximum number of boards allowed.
-#define MAXNUMFUSEARGS 500
 
 static char* get_board_name(char *board_str);
 
 /* */
 char *chan;
+int chan_str_len;
 
 static struct fuse_operations operations = {
     .getattr = do_getattr,
@@ -51,9 +52,11 @@ int main(int argc, char *argv[])
                     break;
                 case 'c':
                     chan = argv[++i];
+		    chan_str_len = strlen(chan);
                     break;
                 default:
-                    break;
+                    fuse_arg_strs[fuse_idx++] = arg;
+		    break;
             }
         } else 
             fuse_arg_strs[fuse_idx++] = arg;

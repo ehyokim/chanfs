@@ -1,8 +1,8 @@
 #include <sys/types.h>
 #include "chan_parse.h"
 
-#define FILEPERMS  S_IRWXU | S_IRWXG | S_IRWXO //TODO: fix these permissons. These are just a placeholder to make things work for now.
-#define DIRPERMS  S_IRWXU | S_IRWXG | S_IRWXO
+#define FILEPERMS  S_IRUSR | S_IRGRP | S_IROTH //TODO: fix these permissons. These are just a placeholder to make things work for now.
+#define DIRPERMS  S_IRUSR | S_IRGRP | S_IROTH
 
 #define FILENAMELEN 20
 
@@ -17,7 +17,6 @@ typedef enum dirtype {
 typedef struct str_rep_buffer {
     int buffer_size;
     int curr_str_size;
-    int  col_limit;
     char *buffer_start;
     char *str_end;
 } StrRepBuffer;

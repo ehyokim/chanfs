@@ -6,6 +6,7 @@
 #include "include/chan_parse.h"
 
 extern const char *chan;
+extern const int chan_str_len;
 
 typedef struct MemoryStruct {
   char *memory;
@@ -48,7 +49,9 @@ static MemoryStruct retrieve_webpage(char *url)
     struct MemoryStruct chunk;
 
     if (!url) {
+	fprintf(stderr, "Error: Invalid URL");
         return (MemoryStruct) {NULL, -1};
+
     }
 
     char *mem_chunk = chunk.memory = malloc(1);
@@ -274,7 +277,7 @@ static char *constr_thread_url(char *board, int thread_op_no)
     if (!post_no)
         return NULL;
 
-    size_t url_len = strlen(chan) + strlen(post_no) + 12;
+    size_t url_len = chan_str_len + strlen(board) + strlen(post_no) + 12;
 
     char *url = malloc(url_len);
     if (!url) {

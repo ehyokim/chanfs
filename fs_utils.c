@@ -238,7 +238,7 @@ static StrRepBuffer new_str_rep_buffer(void)
         buffer_size = 0;
     }
 
-    return (StrRepBuffer) {buffer_size, 0, 0, buffer_start, buffer_start};
+    return (StrRepBuffer) {buffer_size, 0, buffer_start, buffer_start};
 }
 
 static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file)
@@ -301,17 +301,19 @@ static void append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
 
     char *tail_ptr = str_buffer->str_end;
      /* We do not consider the nul character at the end of str. The nul character will be appended at the end. */
-    int i = 0;
-    while (i < str_len) {
-        *tail_ptr++ = *str;
-        str_buffer->col_limit = (*str == '\n') ? 0 : ++str_buffer->col_limit;    
-
-        if (str_buffer->col_limit == MAX_NUM_COLS) {
-            *tail_ptr++ = '\n';
-            str_buffer->col_limit = 0;
-        }
-        i++, str++;
-   }  
+    char *start_mark = str;
+    int char_remaining = str_len;
+    while (char_remaining >= MAX_NUM_COLS) {
+	memcpy(tail_ptr, start_mark, MAX_NUM_COLS);
+	tail_ptr += MAX_NUM_COLS;
+	start_mark += MAX_NUM_COLS;
+       *tail_ptr++ = '\n';
+	char_remaining -= MAX_NUM_COLS;
+    }  
+    
+    /* Copy the rest of the string into buffer */
+    memcpy(tail_ptr, start_mark, char_remaining);
+    tail_ptr += char_remaining;
 
     str_buffer->curr_str_size += (tail_ptr - str_buffer->str_end);  
     str_buffer->str_end = tail_ptr;
@@ -329,7 +331,6 @@ static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
 
     str_buffer->str_end += MAX_NUM_COLS; //Update the end-of-string pointer and the size of the string.
     str_buffer->curr_str_size += MAX_NUM_COLS;
-    str_buffer->col_limit = 0; //Reset the column limit
 }
 
 static void check_buffer_dims(StrRepBuffer *str_buffer, int str_len) 
@@ -394,8 +395,9 @@ static char *truncate_name(char *name)
         return NULL;
     }
 
-    memcpy(trun_title_buffer, name, FILENAMELEN);
+    strncpy(trun_title_buffer, name, FILENAMELEN);
     trun_title_buffer[FILENAMELEN] = '\0';
+
 
     return trun_title_buffer;
 }
