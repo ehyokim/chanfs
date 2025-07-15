@@ -3,6 +3,7 @@
 #include <string.h>
 #include <curl/curl.h>
 
+#include "include/consts.h"
 #include "include/chan_parse.h"
 
 extern const char *chan;
@@ -83,16 +84,18 @@ static MemoryStruct retrieve_webpage(char *url)
 
 AttachedFile download_file(char *board, char *filename)
 {
-    if (!filename)
+    if (!filename) {
         return (AttachedFile) {NULL, 0};
+    }
 
     size_t url_len = strlen(chan) + strlen(board) + strlen(filename) + 7;
     char file_url[url_len];
     sprintf(file_url, "%s/%s/src/%s", chan, board, filename);
     
     MemoryStruct chunk = retrieve_webpage(file_url);
-    if (!chunk.memory)
+    if (!chunk.memory) {
         return (AttachedFile) {NULL, 0};
+    }
 
     return (AttachedFile) {chunk.memory, chunk.size};
 }
@@ -273,11 +276,13 @@ static Post parse_post_json_object(char *board, cJSON *post_json_obj)
 
 static char *constr_thread_url(char *board, int thread_op_no) 
 {
-    char *post_no = thread_int_to_str(thread_op_no);
-    if (!post_no)
-        return NULL;
+    char post_buffer[MAX_POST_NO_DIGITS + 1];
 
-    size_t url_len = chan_str_len + strlen(board) + strlen(post_no) + 12;
+    int intstr_res = post_int_to_str(thread_op_no, post_buffer);
+    if (intstr_res < 0) {
+        return NULL;
+    }
+    size_t url_len = chan_str_len + strlen(board) + MAX_POST_NO_DIGITS + 12;
 
     char *url = malloc(url_len);
     if (!url) {
@@ -285,22 +290,13 @@ static char *constr_thread_url(char *board, int thread_op_no)
         return NULL;
     }
 
-    sprintf(url, "%s/%s/res/%s.json", chan, board, post_no);
-
-    free(post_no);
+    snprintf(url, url_len, "%s/%s/res/%s.json", chan, board, post_buffer);
     return url;
 }
 
-char *thread_int_to_str(int thread_no) 
+int post_int_to_str(int thread_no, char buffer[]) 
  {
-    char *post_no_str = malloc(13);
-    if (!post_no_str) {
-        fprintf(stderr, "Error: Could not allocate memory to convert thread no to string.\n");
-        return NULL;
-    }
-
-    sprintf(post_no_str, "%d", thread_no);
-    return post_no_str; 
+    return snprintf(buffer, MAX_POST_NO_DIGITS, "%d", thread_no);
  }
 
 static int find_total_num_replies(cJSON *thread)

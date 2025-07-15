@@ -1,6 +1,8 @@
 #include <cjson/cJSON.h>
 #include <time.h>
 
+#define MAX_POST_NO_DIGITS 14
+
 typedef struct Post {
     int no;
     char *board;
@@ -33,7 +35,7 @@ typedef struct AttachedFile {
 Board parse_board(char *board);
 Thread parse_thread(char *board, int thread_op_no);
 AttachedFile download_file(char *board, char *filename);
-char *thread_int_to_str(int thread_no); 
+int post_int_to_str(int thread_no, char buffer[]); 
 void free_board_parse_results(Board parse_res);
 void free_post(Post post);
 void free_thread_parse_results(Thread results);

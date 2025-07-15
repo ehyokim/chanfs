@@ -7,6 +7,7 @@
 #include <fuse.h>
 #include <curl/curl.h>
 
+#include "include/chan_parse.h"
 #include "include/fs_utils.h"
 #include "include/fs.h"
 

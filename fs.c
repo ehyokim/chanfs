@@ -5,6 +5,8 @@
 #include <fuse.h>
 #include <errno.h>
 
+#include "include/consts.h"
+#include "include/chan_parse.h"
 #include "include/fs_utils.h"
 #include "include/fs.h"
 
