@@ -88,7 +88,7 @@ AttachedFile download_file(char *board, char *filename)
         return (AttachedFile) {NULL, 0};
     }
 
-    size_t url_len = strlen(chan) + strlen(board) + strlen(filename) + 7;
+    size_t url_len = chan_str_len + strlen(board) + strlen(filename) + 7;
     char file_url[url_len];
     sprintf(file_url, "%s/%s/src/%s", chan, board, filename);
     
@@ -167,7 +167,7 @@ Board parse_board(char *board)
     Board results;
     int success_status = 0;
 
-    size_t url_len = strlen(chan) + strlen(board) + 15;
+    size_t url_len = chan_str_len + strlen(board) + 15;
     char catalog_url[url_len]; 
     sprintf(catalog_url, "%s/%s/catalog.json", chan, board);
 
@@ -282,6 +282,7 @@ static char *constr_thread_url(char *board, int thread_op_no)
     if (intstr_res < 0) {
         return NULL;
     }
+
     size_t url_len = chan_str_len + strlen(board) + MAX_POST_NO_DIGITS + 12;
 
     char *url = malloc(url_len);
