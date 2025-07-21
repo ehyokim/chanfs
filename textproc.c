@@ -109,7 +109,8 @@ new_str_rep_buffer(char *input_str_buffer, int buffer_size)
     if (input_str_buffer != NULL) {
         int str_len_in_buf = strlen(input_str_buffer);
         return (StrRepBuffer) {buffer_size, 
-                               str_len_in_buf, 
+                               str_len_in_buf,
+                               0, 
                                input_str_buffer, 
                                input_str_buffer + str_len_in_buf
                               };
@@ -123,7 +124,11 @@ new_str_rep_buffer(char *input_str_buffer, int buffer_size)
         buffer_size = 0;
     }
 
-    return (StrRepBuffer) {buffer_size, 0, buffer_start, buffer_start};
+    return (StrRepBuffer) {buffer_size, 
+                           0, 
+                           0, 
+                           buffer_start, 
+                           buffer_start};
 }
 
 /* Concatenates the name of an attached file associated with a post and its extention together. */
@@ -203,24 +208,24 @@ append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len)
 {
     check_buffer_dims(str_buffer, str_len + (str_len / MAX_NUM_COLS + 1));
 
+    char *p = str;
     char *tail_ptr = str_buffer->str_end;
-
-     /* We do not consider the nul character at the end of str. The nul character will be appended at the end. */
-    char *start_mark = str;
-    int char_remaining = str_len;
-    while (char_remaining >= MAX_NUM_COLS) {
-	    memcpy(tail_ptr, start_mark, MAX_NUM_COLS);
-
-	    tail_ptr += MAX_NUM_COLS;
-	    start_mark += MAX_NUM_COLS;
-       *tail_ptr++ = '\n';
-
-	    char_remaining -= MAX_NUM_COLS;
-    }  
-    
-    /* Copy the rest of the string into buffer */
-    memcpy(tail_ptr, start_mark, char_remaining);
-    tail_ptr += char_remaining;
+    int *used_cols = &(str_buffer->used_cols);
+    for (;p < str + str_len; p++, tail_ptr++) {
+        char c = *p;
+        *tail_ptr = c;
+        (*used_cols)++;
+        if (c == '\n') {
+            *used_cols = 0;
+        } else if (*used_cols == MAX_NUM_COLS) {
+            *(++tail_ptr) = '\n';
+            *used_cols = 0;
+            /* Skip spaces if we are on a fresh line in order to have better formatting */
+            if (*(p + 1) == ' ') { 
+                p++;
+            }
+        }
+    }
 
     str_buffer->curr_str_size += (tail_ptr - str_buffer->str_end);  
     str_buffer->str_end = tail_ptr;
@@ -266,16 +271,17 @@ static void
 append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str) 
 {
     if(!str) return;
-
     size_t size_of_str = snprintf(NULL, 0, str_formatter, str);
 
     char *formatted_str = malloc(size_of_str + 1);
     if (!formatted_str) {
         fprintf(stderr, "Error: Could not allocate memory for formatted output string");
+        return;
     }
 
     sprintf(formatted_str, str_formatter, str);
     append_to_buffer_cols(str_buffer, formatted_str, size_of_str);
+    str_buffer->used_cols = 0; //Reset the column counter.
     free(formatted_str);
 }
 

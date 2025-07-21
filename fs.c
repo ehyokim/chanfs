@@ -112,20 +112,20 @@ traverse(const char *path)
     char *token = strtok(pathcpy, "/");
     ChanFSObj *traverse_ptr = root;
 
+    int query_successful = 1;
     while (token != NULL) {
         if (traverse_ptr->base_mode != S_IFDIR) {
             fprintf(stderr, "Error: attempting to traverse over a file or other.\n");
-            return NULL;
+            query_successful = 0;
+            goto traverse_error;
         }
 
         Chandir curr_dir = traverse_ptr->fs_obj.chandir;
-
         int num_of_children = curr_dir.num_of_children;
         ChanFSObj **children = curr_dir.children;
 
         ChanFSObj *found_obj = NULL;
-        int i;
-        for(i = 0; i < num_of_children; i++) {
+        for(int i = 0; i < num_of_children; i++) {
             if (strcmp(children[i]->name, token) == 0) { //TODO: Use a tree-search at this point.
                 found_obj = traverse_ptr = children[i];
                 break; 
@@ -133,14 +133,18 @@ traverse(const char *path)
         }
 
         if (!found_obj) {
-            //fprintf(stderr, "Error: no such file or directory with the name: %s was found.\n", token);
-            return NULL;
+            fprintf(stderr, 
+                    "Error: no such file or directory with the name: %s was found.\n", 
+                    token);
+            query_successful = 0;
+            goto traverse_error;
         }
 
         token = strtok(NULL, "/");
     }
 
+traverse_error:
     free(pathcpy);
-    return traverse_ptr;
+    return (query_successful) ? traverse_ptr : NULL;
 }
 

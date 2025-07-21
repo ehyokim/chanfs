@@ -100,8 +100,8 @@ tokenizer_callback(lxb_html_tokenizer_t *tkz, lxb_html_token_t *token, void *ctx
             }
             break;
         case LXB_TAG_BR:
-            value_str = "\n";
-            len = 1;
+            value_str = "\n\n";
+            len = 2;
             break;
         default:
             return token;
@@ -363,7 +363,6 @@ parse_post_json_object(char *board, cJSON *post_json_obj)
     
     cJSON *com = cJSON_GetObjectItemCaseSensitive(post_json_obj, "com");
     if (cJSON_IsString(com)) {
-        //post.com = strdup(com->valuestring);
         post.com = parse_html(com->valuestring);
     }
     

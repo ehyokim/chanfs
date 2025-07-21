@@ -1,6 +1,7 @@
 struct str_rep_buffer {
     int buffer_size;
     int curr_str_size;
+    int used_cols;
     char *buffer_start;
     char *str_end;
 };
