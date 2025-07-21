@@ -121,16 +121,16 @@ generate_file_contents(ChanFSObj *file_obj)
         StrRepBuffer str_buffer;
         switch (file_type) {
             case POST_TEXT:
-                str_buffer = generate_post_str_rep(file_obj->asso_info.post);
+                str_buffer = generate_post_str_rep(file_obj->asso_info.post); //BAD: Post contents are generated twice. Fix this.
                 write_to_file_from_buffer(file_obj, str_buffer);
                 break;
             case THREAD_OP_TEXT:
+                parse_html_for_thread(file_obj->asso_info.thread);
                 str_buffer = generate_thread_str_rep(file_obj->asso_info.thread);
                 write_to_file_from_buffer(file_obj, str_buffer);
                 break;
             case ATTACHED_FILE:
-                Post *post = file_obj->asso_info.post;
-                AttachedFile attached_file = download_attached_file(post);
+                AttachedFile attached_file = download_attached_file(file_obj->asso_info.post);
                 write_to_file_from_attached_file(file_obj, attached_file);
                 break;
             case ERROR_FILE:

@@ -6,9 +6,16 @@ typedef struct str_rep_buffer StrRepBuffer;
 
 typedef struct Post {
     int no;
+    /* The post numbers which this post replies to */
+    int *replies_to;
+    int num_replies_to;
+    /* The post numbers which this post gets a reply from */
+    int *replies_from;
+    int num_replies_from;
     char *board;
     char *sub;
     char *com;
+    char *parsed_com;
     char *name;
     char *tim;
     char *filename;
@@ -25,7 +32,7 @@ typedef struct Board {
 
 typedef struct Thread {
     Post *posts;
-    int num_of_replies;
+    int num_of_replies; //Change this to num_of_posts
 } Thread;
 
 typedef struct AttachedFile {

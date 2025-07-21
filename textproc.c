@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 #include <stdlib.h>
+#include <lexbor/html/tokenizer.h>
 
 #include "include/consts.h"
 #include "include/chan_parse.h"
@@ -15,23 +17,231 @@ static size_t generate_time_string(const time_t t, char buffer[]);
 static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2);
 static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str);
 static int concat_ori_truncated_filename_ext(Post *post, char buffer[]);
+static char *parse_html(Post *post); 
 
-StrRepBuffer 
-new_error_buffer(char *board) 
+typedef struct html_parse_data {
+    int is_link;
+    int num_replies_found;
+    int size_of_reply_buf;
+    int *replies_found;
+    StrRepBuffer parsed_text;
+} HTMLParseStruct;
+
+static int 
+add_reply_to_html_data_struct(char *reply_no, HTMLParseStruct *pd)
 {
-    StrRepBuffer err_str_buffer = new_str_rep_buffer(NULL, 0);
-    append_to_buffer_formatted(&err_str_buffer, 
-                               "Error: Board %s has failed to load. Perhaps it doesn't exist?", 
-                               board);
+    if (pd->num_replies_found == 0) {
+        pd->replies_found = malloc(30 * sizeof(int)); //Probably won't be more than 30 replies.
+        
+        if (!(pd->replies_found)) {
+            fprintf(stderr, "Error: Cannot allocate memory for replies array in HTML parser struct\n");
+            return 1;
+        }
+        
+        pd->size_of_reply_buf = 30;
+
+    } else if ((pd->num_replies_found + 1) >= pd->size_of_reply_buf) {
+         int *np = realloc(pd->replies_found, 2*pd->num_replies_found * sizeof(int));
+
+        if (!np) {
+            fprintf(stderr, "Error: Cannot allocate memory for replies array in HTML parser struct\n");
+            return 1;                        
+        }
+
+        pd->replies_found = np;
+        pd->size_of_reply_buf = 2*pd->num_replies_found;
+    } 
     
-    return err_str_buffer;
+    *(pd->replies_found + pd->num_replies_found) = atoi(reply_no);
+    pd->num_replies_found++;
+
+    return 0;
+}
+
+static lxb_html_token_t *
+tokenizer_callback(lxb_html_tokenizer_t *tkz, lxb_html_token_t *token, void *ctx) 
+{
+    HTMLParseStruct *parsed_text_ptr = (HTMLParseStruct *) ctx;
+
+    lxb_html_token_attr_t *attr;
+    const lxb_char_t *name;
+
+    size_t len;
+    char *value_str;
+
+    unsigned int is_close_token = token->type & LXB_HTML_TOKEN_TYPE_CLOSE;
+    int *is_link = &parsed_text_ptr->is_link;
+
+    switch (token->tag_id) {
+        case LXB_TAG__TEXT:
+            len = token->text_end - token->text_start;
+            value_str = token->text_start;
+            break;
+        case LXB_TAG_SPAN:
+            return token;
+            break;
+        case LXB_TAG_A:
+            if (is_close_token) {
+                /* If we find a close token and its associated to a link, 
+                 * print the closing parenthesis. */
+                if (*is_link) {
+                    value_str = ")";
+                    len = 2;
+                    *is_link = 0;
+                } else {
+                    return token;
+                }
+                break;
+            }
+
+            name = lxb_html_token_attr_name(token->attr_first, NULL);  
+            if (strcmp(name, "onclick") == 0) {
+                /* This should be href since we are working with a reply here */
+                attr = token->attr_first->next;
+                value_str = attr->value;
+                /* Start from the end where the reply post number is located */
+                value_str += strlen(value_str);
+                
+                /* Find the reply post number from the href field */
+                char c;
+                len = 0;
+                while ((c = *(--value_str)) != '#') {
+                    if (islower(c)) {
+                        fprintf(stderr, "Error: Demarking # non-existent in reply link.");
+                        return token;
+                    }
+                    len++;
+                }
+                /* Begin from first digit of reply post */
+                value_str++;
+                 
+                /* Now record the found reply */
+                add_reply_to_html_data_struct(value_str, parsed_text_ptr);
+                return token;
+            } else if (strcmp(name, "href") == 0) {
+                /* Otherwise, it will be a regular link */
+                value_str = "(Link: ";
+                len = 7;
+                *is_link = 1;
+            } 
+
+            return token;
+            break;
+        case LXB_TAG_BR:
+            value_str = "\n\n";
+            len = 2;
+            break;
+        default:
+            return token;
+            break;   
+    }
+
+    append_to_buffer(&parsed_text_ptr->parsed_text, value_str, len);
+    return token;
+}
+
+
+static char *
+parse_html(Post *post) 
+{
+    lxb_status_t status;
+    lxb_html_tokenizer_t *tkz;
+
+    tkz = lxb_html_tokenizer_create();
+    status = lxb_html_tokenizer_init(tkz);
+    if (status != LXB_STATUS_OK) {
+        fprintf(stderr, "Error: HTML tokenizer initization failed.");
+        goto init_fail;
+    }
+
+    char *raw_str = post->com;
+
+    /* Initialize an empty buffer equal to length of input string */
+    size_t tot_len_input = strlen(raw_str);
+    char *new_buf = malloc(tot_len_input + 1);
+    if (!new_buf) {
+        fprintf(stderr, "Error: Cannot allocate memory for parsed HTML buffer\n");
+        goto init_fail;
+    }
+
+    *new_buf = 0;
+    StrRepBuffer parsed_text = new_str_rep_buffer(new_buf, tot_len_input + 1);
+    HTMLParseStruct parse_struct = {0, 0, 0, NULL, parsed_text};
+
+    lxb_html_tokenizer_callback_token_done_set(tkz, tokenizer_callback, &parse_struct);
+
+    status = lxb_html_tokenizer_begin(tkz);
+    if (status != LXB_STATUS_OK) {
+        fprintf(stderr, "Error: Failed to prepare tokenizer object.");
+        goto parse_fail;
+    }
+
+    status = lxb_html_tokenizer_chunk(tkz, raw_str, tot_len_input);
+    if (status != LXB_STATUS_OK) {
+        fprintf(stderr, "Error: Failed to parse HTML");
+        goto parse_fail;
+    }
+
+    status = lxb_html_tokenizer_end(tkz);
+    if (status != LXB_STATUS_OK) {
+        fprintf(stderr, "Error: Failed to stop parsing of HTML");
+        goto parse_fail;
+    }
+
+    lxb_html_tokenizer_destroy(tkz);
+
+    if (parse_struct.num_replies_found > 0) {
+        post->replies_to = parse_struct.replies_found;
+        post->num_replies_to = parse_struct.num_replies_found;      
+    }
+
+    return parsed_text.buffer_start;
+
+parse_fail:
+    free_str_rep_buffer(parsed_text); 
+init_fail:
+    lxb_html_tokenizer_destroy(tkz);
+    return NULL;
 }
 
 void 
-free_str_rep_buffer(StrRepBuffer str_buffer)
+parse_html_for_thread(Thread thread)
 {
-    free(str_buffer.buffer_start);
+    int num_of_replies = thread.num_of_replies;
+    Post *replies = thread.posts;
+    for (int i = (num_of_replies - 1); i >= 0; i--) {
+        Post *post = replies + i;
+        post->parsed_com = parse_html(post);
+
+        int *next_slot = NULL; 
+        /* Run through all of the posts made after the current post */
+        for (int j = i+1; j < num_of_replies; j++) {
+            Post *later_post = replies + j;
+            int *lp_replies_to = later_post->replies_to;
+            /* Check if any replies made to the current post from the later post */
+            for (int k = 0; k < later_post->num_replies_to; k++) {
+                if (post->no == lp_replies_to[k]) {
+                    /* We only allocate memory when is at least one reply to the current post */
+                    if (!next_slot) {
+                        /* Since OP can't reply to himself, this is sufficiently large for all replies */
+                        post->replies_from = malloc(num_of_replies * sizeof(int));
+                        if (!(post->replies_from)) {
+                            fprintf(stderr, "Error: Cannot allocate memory for replies from array for post\n");
+                            goto allo_fail;
+                        }
+                        next_slot = post->replies_from;
+                    }  
+
+                    *next_slot = later_post->no;
+                    next_slot++;
+                    post->num_replies_from++;
+                }
+            }
+        }
+allo_fail:
+    }
 }
+
 
 /* This is bad since it generates the post string contents twice at most. */
 StrRepBuffer 
@@ -55,6 +265,24 @@ generate_thread_str_rep(Thread thread)
     }
 
     return thread_str_buffer;
+}
+
+
+StrRepBuffer 
+new_error_buffer(char *board) 
+{
+    StrRepBuffer err_str_buffer = new_str_rep_buffer(NULL, 0);
+    append_to_buffer_formatted(&err_str_buffer, 
+                               "Error: Board %s has failed to load. Perhaps it doesn't exist?", 
+                               board);
+    
+    return err_str_buffer;
+}
+
+void 
+free_str_rep_buffer(StrRepBuffer str_buffer)
+{
+    free(str_buffer.buffer_start);
 }
 
 /* Generate the string representation of a chan post. */
@@ -93,8 +321,30 @@ generate_post_str_rep(Post *post)
     }
 
     append_to_buffer_formatted(&buffer, "Subject: %s\n", post->sub);
-    append_to_buffer_formatted(&buffer, "\n\n%s\n", post->com);
- 
+
+    if (post->num_replies_from > 0) {
+        char *reply_str_buf = malloc(post->num_replies_from * (MAX_POST_NO_DIGITS + 1) + 1);
+        if (!reply_str_buf) {
+            fprintf(stderr, "Error: Cannot allocate memory for reply string buffer\n");
+            goto allo_fail;
+        }
+
+        size_t tail = 0;
+        for (int i = 0; i < post->num_replies_from; i++) {
+            int res = sprintf(reply_str_buf + tail, " %d", post->replies_from[i]);
+            if (res < 0) {
+                fprintf(stderr, "Error: sprintf failed while writing reply numbers.\n");
+                goto print_fail;
+            }
+            tail += res;
+        }
+
+        append_to_buffer_formatted(&buffer, "Replies to this Post:%s\n", reply_str_buf);
+print_fail:
+        free(reply_str_buf);
+    }
+allo_fail:
+    append_to_buffer_formatted(&buffer, "\n\n%s\n", post->parsed_com);
     return buffer;
 }
 
@@ -210,7 +460,7 @@ append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len)
 
     char *p = str;
     char *tail_ptr = str_buffer->str_end;
-    int *used_cols = &(str_buffer->used_cols);
+    int *used_cols = &str_buffer->used_cols;
     for (;p < str + str_len; p++, tail_ptr++) {
         char c = *p;
         *tail_ptr = c;
@@ -249,7 +499,7 @@ flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
 static void 
 check_buffer_dims(StrRepBuffer *str_buffer, int str_len) 
 {
-    if (str_buffer->curr_str_size + str_len + 1 > str_buffer->buffer_size) {
+    if (str_buffer->curr_str_size + (str_len + 1) > str_buffer->buffer_size) {
         int new_buffer_size = str_buffer->buffer_size + (str_len + 1) + 100;
 
         char *new_ptr = realloc(str_buffer->buffer_start, new_buffer_size);
