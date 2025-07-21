@@ -1,7 +1,8 @@
 #include <cjson/cJSON.h>
 #include <time.h>
 
-#define MAX_POST_NO_DIGITS 14
+struct str_rep_buffer; 
+typedef struct str_rep_buffer StrRepBuffer;
 
 typedef struct Post {
     int no;

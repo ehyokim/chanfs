@@ -25,7 +25,8 @@ static AttachedFile download_attached_file(Post *post);
 ChanFSObj *root;
 
 /* Generates the initial root directory and instantiates the FS. */
-void generate_fs(char *board_strs[])
+void 
+generate_fs(char *board_strs[])
 {
     root = init_dir("/", NULL, time(NULL), ROOT_DIR, (AssoInfo)((Post *) NULL));
     if (!root) {
@@ -46,7 +47,8 @@ void generate_fs(char *board_strs[])
 
 /* Given a dir FS object corresponding to a board directory, generate all of the directories 
    corresponding to threads living within that board. */
-static void generate_board_dir(ChanFSObj *board_dir_object) 
+static void 
+generate_board_dir(ChanFSObj *board_dir_object) 
 {
     char *board = board_dir_object->asso_info.board;
     Board results = parse_board(board);
@@ -68,7 +70,8 @@ static void generate_board_dir(ChanFSObj *board_dir_object)
 }
 
 /* Given a dir FS object corresponding to a thread directory, generate all of post directories and the thread.txt */
-static void generate_thread_dir(ChanFSObj *thread_dir_object) 
+static void 
+generate_thread_dir(ChanFSObj *thread_dir_object) 
 {   
         Post* thread_op = thread_dir_object->asso_info.post;
         char *board = thread_op->board;
@@ -96,7 +99,8 @@ static void generate_thread_dir(ChanFSObj *thread_dir_object)
 }
 
 /* Generate the post directory including its post.txt and any attached files. */
-static void generate_post_dir(ChanFSObj *post_dir_object)
+static void 
+generate_post_dir(ChanFSObj *post_dir_object)
 {
     Post *post = post_dir_object->asso_info.post;
     init_file("Post.txt", post_dir_object, post->timestamp, POST_TEXT, post_dir_object->asso_info); //Add Post text to each reply directory.
@@ -108,7 +112,8 @@ static void generate_post_dir(ChanFSObj *post_dir_object)
 }
 
 /* Generate the contents of a given file FS object to be handed over to FUSE. */
-void generate_file_contents(ChanFSObj *file_obj)
+void 
+generate_file_contents(ChanFSObj *file_obj)
 {       
         Chanfile file = file_obj->fs_obj.chanfile;
         Filetype file_type = file.type;
@@ -136,7 +141,8 @@ void generate_file_contents(ChanFSObj *file_obj)
         file_obj->generated_flag = 1;
 }
 
-static AttachedFile download_attached_file(Post *post) 
+static AttachedFile 
+download_attached_file(Post *post) 
 {
     char *concat_name = concat_filename_ext(post, RENAMED);
     if (!concat_name) {
@@ -151,7 +157,8 @@ static AttachedFile download_attached_file(Post *post)
 }
 
 /* Generate the contents of a given directory FS object to be handed over to FUSE. */
-void generate_dir_contents(ChanFSObj *dir_obj)
+void 
+generate_dir_contents(ChanFSObj *dir_obj)
 {
     Chandir dir = dir_obj->fs_obj.chandir;    
     Dirtype dir_type = dir.type;
@@ -173,7 +180,8 @@ void generate_dir_contents(ChanFSObj *dir_obj)
     dir_obj->generated_flag = 1;    
 }
 
-static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file)
+static void 
+write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file)
 {
     Chanfile *file = (Chanfile *) &(file_obj->fs_obj);    
     file->contents = attached_file.file;
@@ -181,7 +189,9 @@ static void write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile a
 }
 
 /* A simple function that just sets a file FS object's contents to some aggregate string representation buffer. */
-static void write_to_file_from_buffer(ChanFSObj *file_obj, StrRepBuffer str_buffer) {
+static void 
+write_to_file_from_buffer(ChanFSObj *file_obj, StrRepBuffer str_buffer) 
+{
     Chanfile *file = (Chanfile *) &(file_obj->fs_obj);    
     file->contents = str_buffer.buffer_start;
     file->size = str_buffer.curr_str_size;
@@ -189,7 +199,8 @@ static void write_to_file_from_buffer(ChanFSObj *file_obj, StrRepBuffer str_buff
 
 
 /*  Sets the name of directories containing thread information. */
-static char *set_thread_dir_name(Post *thread_op)
+static char *
+set_thread_dir_name(Post *thread_op)
 {   
     char *untreated_dir_name;
 
@@ -201,12 +212,15 @@ static char *set_thread_dir_name(Post *thread_op)
     
     char *treated_dir_name = truncate_name(untreated_dir_name);
     sanitize_name(treated_dir_name);
+
     return treated_dir_name;
 }
 
 /* The strings used for titles of files and directories are truncated down to size 
-    to encourage readability and to reduce clutter. */
-static char *truncate_name(char *name) 
+ * to encourage readability and to reduce clutter. 
+ */
+static char *
+truncate_name(char *name) 
 {
     char *trun_title_buffer = malloc(MAX_FILENAME_LEN + 1);
     if (!trun_title_buffer) {
@@ -217,29 +231,29 @@ static char *truncate_name(char *name)
     strncpy(trun_title_buffer, name, MAX_FILENAME_LEN);
     trun_title_buffer[MAX_FILENAME_LEN] = '\0';
 
-
     return trun_title_buffer;
 }
 
 /* Used to replace any backslashes found in the filenames with a '#' character.
-This is a hacky way to ensure that the filenames do not interfere with the absolute pathname. 
-The issue with this is that we lose all of the backslash information. */
-static void sanitize_name(char *name) 
+ * This is a hacky way to ensure that the filenames do not interfere with the absolute pathname. 
+ * The issue with this is that we lose all of the backslash information. 
+ */
+static void 
+sanitize_name(char *name) 
 {
     if (!name) return;
     for (; *name != '\0'; name++)
         *name = (*name == '/') ? '#' : *name;
 }
 
-/*
-Adding any child file or directory underneath a supplied directory FS object.
-*/
-static int add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
+/* Adding any child file or directory underneath a supplied directory FS object. */
+static int 
+add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
 {   
     Chandir *dir = (Chandir *) &(dir_fs_object->fs_obj);
 
     if (dir->num_of_children >= dir->num_of_children_slots) {
-        int new_num_of_children_slots = dir->num_of_children_slots + 50;
+        int new_num_of_children_slots = dir->num_of_children_slots + INIT_NUM_CHILD_SLOTS;
         ChanFSObj **obj_ptr = realloc(dir->children, new_num_of_children_slots * sizeof(ChanFSObj *));
 
         if (!obj_ptr) {
@@ -257,7 +271,8 @@ static int add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
 }
 
 /* Directory FS objects are initialized and added to a parent directory. The appropriate attributes are also set */
-static ChanFSObj *init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirtype type, AssoInfo asso_info)
+static ChanFSObj *
+init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirtype type, AssoInfo asso_info)
 {
     ChanFSObj *new_fs_obj = malloc(sizeof(ChanFSObj));
     if (!new_fs_obj) {
@@ -309,7 +324,8 @@ allo_fs_obj_fail:
 
 
 /* File FS objects are initialized and added to a parent directory. The appropriate attributes are also set */
-static ChanFSObj *init_file(char *name, ChanFSObj *curr_dir, time_t time, Filetype type, AssoInfo asso_info)
+static ChanFSObj *
+init_file(char *name, ChanFSObj *curr_dir, time_t time, Filetype type, AssoInfo asso_info)
 {
     ChanFSObj *new_fs_obj = malloc(sizeof(ChanFSObj));
     if (!new_fs_obj) {

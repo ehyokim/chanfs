@@ -15,7 +15,8 @@ extern ChanFSObj *root;
 static ChanFSObj *traverse(const char *path);
 
 /* The FUSE getattr function */
-int do_getattr(const char *path, struct stat *st)
+int 
+do_getattr(const char *path, struct stat *st)
 {
     //printf("Querying: %s\n", path);
     ChanFSObj *found_obj = traverse(path);
@@ -42,7 +43,8 @@ int do_getattr(const char *path, struct stat *st)
 }
 
 /* The FUSE readdir function */
-int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+int 
+do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
     //printf("Reading directory: %s \n", path);
     filler(buffer, ".", NULL, 0);
@@ -70,7 +72,8 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t off
 }
 
 /* The FUSE read function */
-int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *fi)
+int 
+do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     //printf("Readfile called with path: %s\n", path);
 
@@ -96,7 +99,8 @@ int do_read(const char *path, char *buffer, size_t size, off_t offset, struct fu
 }
 
 /* Function to traverse the FS according to a supplied path. */
-static ChanFSObj *traverse(const char *path)
+static ChanFSObj *
+traverse(const char *path)
 {
     char *pathcpy = strdup(path);
     if (!pathcpy) {

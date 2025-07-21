@@ -8,30 +8,34 @@
 #include "include/textproc.h"
 
 
-static void append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len);
+static void append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len);
 static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer);
 static void check_buffer_dims(StrRepBuffer *str_buffer, int str_len);
 static size_t generate_time_string(const time_t t, char buffer[]);
 static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2);
-static StrRepBuffer new_str_rep_buffer(void); 
 static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str);
 static int concat_ori_truncated_filename_ext(Post *post, char buffer[]);
 
-StrRepBuffer new_error_buffer(char *board) 
+StrRepBuffer 
+new_error_buffer(char *board) 
 {
-    StrRepBuffer err_str_buffer = new_str_rep_buffer();
-    append_to_buffer_formatted(&err_str_buffer, "Error: Board %s has failed to load. Perhaps it doesn't exist?", board);
+    StrRepBuffer err_str_buffer = new_str_rep_buffer(NULL, 0);
+    append_to_buffer_formatted(&err_str_buffer, 
+                               "Error: Board %s has failed to load. Perhaps it doesn't exist?", 
+                               board);
     
     return err_str_buffer;
 }
 
-void free_str_rep_buffer(StrRepBuffer str_buffer)
+void 
+free_str_rep_buffer(StrRepBuffer str_buffer)
 {
     free(str_buffer.buffer_start);
 }
 
-//This is bad since it generates the post string contents twice at most.
-StrRepBuffer generate_thread_str_rep(Thread thread) 
+/* This is bad since it generates the post string contents twice at most. */
+StrRepBuffer 
+generate_thread_str_rep(Thread thread) 
 {
     Post *replies = thread.posts;
     StrRepBuffer thread_str_buffer = generate_post_str_rep(replies); //Begin with converting the OP post.
@@ -54,13 +58,14 @@ StrRepBuffer generate_thread_str_rep(Thread thread)
 }
 
 /* Generate the string representation of a chan post. */
-StrRepBuffer generate_post_str_rep(Post *post) 
+StrRepBuffer 
+generate_post_str_rep(Post *post) 
 {
     char time_buffer[MAX_TIME_STR_LEN];
     char post_no_buffer[MAX_POST_NO_DIGITS + 1];
     char filename_buffer[MAX_FILENAME_LEN + 1];
 
-    StrRepBuffer buffer = new_str_rep_buffer();
+    StrRepBuffer buffer = new_str_rep_buffer(NULL, 0);
     if (buffer.buffer_size == 0) {
         fprintf(stderr, "Error; Could not allocate memory to start a new StrRepBuffer.\n");
         return buffer;
@@ -78,27 +83,39 @@ StrRepBuffer generate_post_str_rep(Post *post)
     append_to_buffer_formatted(&buffer, "Email: %s\n", post->email);
     
     size_t time_res = generate_time_string(post->timestamp, time_buffer);
-
     if (time_res) {
         append_to_buffer_formatted(&buffer, "Time: %s\n", time_buffer);
     }
 
     int trun_res = concat_ori_truncated_filename_ext(post, filename_buffer);
-
     if (trun_res) {
         append_to_buffer_formatted(&buffer, "Attached File: %s\n", filename_buffer);
     }
 
     append_to_buffer_formatted(&buffer, "Subject: %s\n", post->sub);
-    append_to_buffer_formatted(&buffer, "\n\n %s\n", post->com);
-
-
+    append_to_buffer_formatted(&buffer, "\n\n%s\n", post->com);
+ 
     return buffer;
 }
 
-static StrRepBuffer new_str_rep_buffer(void) 
+/* 
+ * Creates a new string representation buffer. If it is supplied a pre-existing buffer, then it simply
+ * initializes the string rep buffer using that supplied buffer. Otherwise, it allocates a new empty buffer with
+ * an empty string. 
+ */
+StrRepBuffer 
+new_str_rep_buffer(char *input_str_buffer, int buffer_size) 
 {
-    int buffer_size = 100; // Prob should turn this into a constant.
+    if (input_str_buffer != NULL) {
+        int str_len_in_buf = strlen(input_str_buffer);
+        return (StrRepBuffer) {buffer_size, 
+                               str_len_in_buf, 
+                               input_str_buffer, 
+                               input_str_buffer + str_len_in_buf
+                              };
+    }
+
+    buffer_size = 100; // Prob should turn this into a constant.
     char *buffer_start = malloc(buffer_size);
 
     if (!buffer_start) {
@@ -110,7 +127,8 @@ static StrRepBuffer new_str_rep_buffer(void)
 }
 
 /* Concatenates the name of an attached file associated with a post and its extention together. */
-char *concat_filename_ext(Post *post, FilenameType type)
+char *
+concat_filename_ext(Post *post, FilenameType type)
 {
     char *filename = (type == ORIGINAL) ? post->filename : post->tim;
   
@@ -130,7 +148,8 @@ char *concat_filename_ext(Post *post, FilenameType type)
     return concat_file_str;
 }
 
-static int concat_ori_truncated_filename_ext(Post *post, char buffer[])
+static int 
+concat_ori_truncated_filename_ext(Post *post, char buffer[])
 { 
     if (!(post->filename) || !(post->ext)) {
         return 0;
@@ -144,14 +163,16 @@ static int concat_ori_truncated_filename_ext(Post *post, char buffer[])
 
 
 /* Generates a string representing a point in time from a time_t data type. */
-static size_t generate_time_string(const time_t t, char buffer[]) 
+static size_t 
+generate_time_string(const time_t t, char buffer[]) 
 {
     struct tm *tm_st = localtime(&t);
     return strftime(buffer, MAX_TIME_STR_LEN, "%x - %I:%M%p", tm_st);
 }
 
 /* Concatenates two string rep buffers together. */
-static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
+static void 
+concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
 {
     check_buffer_dims(s1, s2.curr_str_size);
     memcpy(s1->str_end, s2.buffer_start, s2.curr_str_size);
@@ -159,8 +180,26 @@ static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
     s1->curr_str_size += s2.curr_str_size;   
 }
 
-/* Takes a string and appends to the supplied string representation buffer. The number of columns is controlled by a static output buffer. */
-static void append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
+/*
+ * This routine is simply append a string to buffer with no regard for a column limit.
+ */
+void 
+append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
+{
+    check_buffer_dims(str_buffer, str_len);
+    memcpy(str_buffer->str_end, str, str_len);
+
+    str_buffer->str_end += str_len;
+    str_buffer->curr_str_size += str_len;
+
+    *str_buffer->str_end = 0; // End nul terminator
+}
+
+/* Takes a string and appends to the supplied string representation buffer.
+ * The number of columns is controlled by a compile-time constant for now. 
+ */
+static void 
+append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len)
 {
     check_buffer_dims(str_buffer, str_len + (str_len / MAX_NUM_COLS + 1));
 
@@ -189,7 +228,8 @@ static void append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
 }
 
 /* Append a divider to the text file represented by the supplied string representaion buffer. */
-static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
+static void 
+flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
 {
     check_buffer_dims(str_buffer, MAX_NUM_COLS);
 
@@ -201,7 +241,8 @@ static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
     str_buffer->curr_str_size += MAX_NUM_COLS;
 }
 
-static void check_buffer_dims(StrRepBuffer *str_buffer, int str_len) 
+static void 
+check_buffer_dims(StrRepBuffer *str_buffer, int str_len) 
 {
     if (str_buffer->curr_str_size + str_len + 1 > str_buffer->buffer_size) {
         int new_buffer_size = str_buffer->buffer_size + (str_len + 1) + 100;
@@ -219,8 +260,10 @@ static void check_buffer_dims(StrRepBuffer *str_buffer, int str_len)
 }
 
 /* An auxiliary function used to generate post and thread text files. 
-   This is used to append a formatted string to a string representation buffer. */
-static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str) 
+ *  This is used to append a formatted string to a string representation buffer.
+ */
+static void 
+append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str) 
 {
     if(!str) return;
 
@@ -232,7 +275,7 @@ static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_forma
     }
 
     sprintf(formatted_str, str_formatter, str);
-    append_to_buffer(str_buffer, formatted_str, size_of_str);
+    append_to_buffer_cols(str_buffer, formatted_str, size_of_str);
     free(formatted_str);
 }
 

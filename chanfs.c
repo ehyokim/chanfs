@@ -24,7 +24,8 @@ static struct fuse_operations operations = {
     .readdir = do_readdir,
 };
 
-int main(int argc, char *argv[])
+int 
+main(int argc, char *argv[])
 {   
     curl_global_init(CURL_GLOBAL_ALL);
 
@@ -81,7 +82,8 @@ int main(int argc, char *argv[])
 }
 
 /* Parse out the board name from the backslashes. */
-static char *get_board_name(char *board_str) {
+static char *
+get_board_name(char *board_str) {
     char *end_slash_ptr = board_str + 1;
     char *start_slash_ptr = board_str + 1;
 
