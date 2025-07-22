@@ -18,7 +18,7 @@ static ChanFSObj *traverse(const char *path);
 int 
 do_getattr(const char *path, struct stat *st)
 {
-    //printf("Querying: %s\n", path);
+    printf("Querying: %s\n", path);
     ChanFSObj *found_obj = traverse(path);
     if (!found_obj) {
         return -ENOENT;
@@ -27,10 +27,7 @@ do_getattr(const char *path, struct stat *st)
         Chanfile file = found_obj->fs_obj.chanfile;
         /* Generate the contents of files and directories as needed. */
         if (!(found_obj->generated_flag)) {
-            /* ad hoc way of delaying the downloading of attached files if any exist */
-            if (file.type != ATTACHED_FILE) {
-                generate_file_contents(found_obj);
-            }
+            generate_file_contents(found_obj);
         }
         st->st_size = file.size;
     } else if (found_obj->base_mode != S_IFDIR) {
@@ -51,7 +48,7 @@ do_getattr(const char *path, struct stat *st)
 int 
 do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
-    //printf("Reading directory: %s \n", path);
+    printf("Reading directory: %s \n", path);
     filler(buffer, ".", NULL, 0);
     filler(buffer, "..", NULL, 0);
 
@@ -80,7 +77,7 @@ do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset,
 int 
 do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    //printf("Readfile called with path: %s\n", path);
+    printf("Readfile called with path: %s\n", path);
 
     ChanFSObj *found_obj = traverse(path);
     if (!found_obj) {
@@ -92,9 +89,9 @@ do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_f
     }
 
     /* Access the file contents and copy them onto the buffer. */
-    if (!(found_obj->generated_flag)) {
-        generate_file_contents(found_obj);
-    }
+    //if (!(found_obj->generated_flag)) {
+    //    generate_file_contents(found_obj);
+    //}
 
     Chanfile file = found_obj->fs_obj.chanfile;
     off_t file_size = file.size;

@@ -22,7 +22,6 @@ typedef struct Post {
     char *ext;
     char *trip;
     char *email;
-    size_t filesize;
     time_t timestamp;
 } Post;
 

@@ -185,7 +185,7 @@ write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file
 {
     Chanfile *file = (Chanfile *) &(file_obj->fs_obj);    
     file->contents = attached_file.file;
-    //file->size = attached_file.size; (Praying that the filesize from the JSON actually matches up with the size we have in memory)
+    file->size = attached_file.size;
 }
 
 /* A simple function that just sets a file FS object's contents to some aggregate string representation buffer. */
@@ -343,8 +343,7 @@ init_file(char *name, ChanFSObj *curr_dir, time_t time, Filetype type, AssoInfo 
     new_fs_obj->generated_flag = 0;
     new_fs_obj->asso_info = asso_info;
 
-    Post *asso_post = (type == ATTACHED_FILE) ? asso_info.post : NULL;
-    Chanfile new_chanfile = {(asso_post) ? asso_info.post->filesize : 0, 
+    Chanfile new_chanfile = {0, 
                             curr_dir, 
                             type, 
                             NULL};
