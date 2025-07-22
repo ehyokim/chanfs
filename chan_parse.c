@@ -20,7 +20,7 @@ static int find_total_num_threads(cJSON *catalog);
 static int find_total_num_replies(cJSON *thread);
 static char *constr_thread_url(char *board, int thread_op_no);
 static void parse_post_json_object(Post *post, cJSON *post_json_obj);
-static MemoryStruct retrieve_webpage(char *url);
+static MemoryStruct retrieve_web_content(char *url);
 
 static size_t
 write_to_memory_callback(void *contents, size_t size, size_t nmemb, void *userp)
@@ -46,12 +46,11 @@ write_to_memory_callback(void *contents, size_t size, size_t nmemb, void *userp)
 } 
 
 static MemoryStruct 
-retrieve_webpage(char *url)
+retrieve_web_content(char *url)
 {
     CURL *curl_handle;
     CURLcode res;
-
-    struct MemoryStruct chunk;
+    MemoryStruct chunk;
 
     if (!url) {
 	    fprintf(stderr, "Error: Invalid URL");
@@ -59,8 +58,8 @@ retrieve_webpage(char *url)
 
     }
 
-    char *mem_chunk = chunk.memory = malloc(INIT_CURL_MEM_BUF_SIZE);
-    if (!mem_chunk) {
+    chunk.memory = malloc(INIT_CURL_MEM_BUF_SIZE);
+    if (!chunk.memory) {
         fprintf(stderr, "Initial memory chunk could not be allocated");
         return (MemoryStruct) {NULL, -1};
 
@@ -98,7 +97,7 @@ download_file(char *board, char *filename)
     char file_url[url_len];
     sprintf(file_url, "%s/%s/src/%s", chan, board, filename);
     
-    MemoryStruct chunk = retrieve_webpage(file_url);
+    MemoryStruct chunk = retrieve_web_content(file_url);
     if (!chunk.memory) {
         return (AttachedFile) {NULL, 0};
     }
@@ -113,7 +112,7 @@ parse_thread(char *board, int thread_op_no)
     int success_status = 0;
 
     char *thread_url = constr_thread_url(board, thread_op_no);
-    char *webpage_text = retrieve_webpage(thread_url).memory;
+    char *webpage_text = retrieve_web_content(thread_url).memory;
 
     if (!webpage_text)
         goto retrieve_fail;
@@ -179,7 +178,7 @@ parse_board(char *board)
     char catalog_url[url_len]; 
     sprintf(catalog_url, "%s/%s/catalog.json", chan, board);
 
-    char *webpage_text = retrieve_webpage(catalog_url).memory;
+    char *webpage_text = retrieve_web_content(catalog_url).memory;
 
     if (!webpage_text)
         goto retrieve_fail;

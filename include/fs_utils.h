@@ -3,11 +3,11 @@
 #define FILEPERMS  S_IRUSR | S_IRGRP | S_IROTH //TODO: fix these permissons. These are just a placeholder to make things work for now.
 #define DIRPERMS  S_IRUSR | S_IRGRP | S_IROTH
 
-typedef enum filetype {
+typedef enum file_type {
     THREAD_OP_TEXT, POST_TEXT, ATTACHED_FILE, ERROR_FILE
 } Filetype;
 
-typedef enum dirtype {
+typedef enum dir_type {
     ROOT_DIR, BOARD_DIR, THREAD_DIR, POST_DIR
 } Dirtype;
 

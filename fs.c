@@ -20,17 +20,22 @@ do_getattr(const char *path, struct stat *st)
 {
     //printf("Querying: %s\n", path);
     ChanFSObj *found_obj = traverse(path);
-    if (!found_obj) 
+    if (!found_obj) {
         return -ENOENT;
-
+    }
     if (found_obj->base_mode == S_IFREG) {
-        if (!(found_obj->generated_flag)) //Generate the contents of files and directories as needed.
-            generate_file_contents(found_obj);
-            
-        Chanfile obj = found_obj->fs_obj.chanfile;
-        st->st_size = obj.size;
-    } else if (found_obj->base_mode != S_IFDIR)
+        Chanfile file = found_obj->fs_obj.chanfile;
+        /* Generate the contents of files and directories as needed. */
+        if (!(found_obj->generated_flag)) {
+            /* ad hoc way of delaying the downloading of attached files if any exist */
+            if (file.type != ATTACHED_FILE) {
+                generate_file_contents(found_obj);
+            }
+        }
+        st->st_size = file.size;
+    } else if (found_obj->base_mode != S_IFDIR) {
         return -ENOENT;
+    }
 
     st->st_mode = found_obj->mode;
     st->st_nlink = found_obj->nlink;
@@ -78,23 +83,30 @@ do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_f
     //printf("Readfile called with path: %s\n", path);
 
     ChanFSObj *found_obj = traverse(path);
-    if (!found_obj)
+    if (!found_obj) {
         return -ENOENT;
+    }
 
-    if(found_obj->base_mode == S_IFDIR)
+    if(found_obj->base_mode == S_IFDIR) {
         return -EISDIR;
-    
-    Chanfile file = found_obj->fs_obj.chanfile;
-    off_t file_size = file.size;
-
-    if (offset > file_size) 
-        return -EINVAL;
+    }
 
     /* Access the file contents and copy them onto the buffer. */
-    char *contents = file.contents;
-    size_t bytes_read = (offset + size > file_size) ? file_size - offset : size;
+    if (!(found_obj->generated_flag)) {
+        generate_file_contents(found_obj);
+    }
 
+    Chanfile file = found_obj->fs_obj.chanfile;
+    off_t file_size = file.size;
+    char *contents = file.contents;
+
+    if (offset > file_size) {
+        return -EINVAL;
+    }
+
+    size_t bytes_read = (offset + size > file_size) ? file_size - offset : size;
     memcpy(buffer, contents + offset, bytes_read);
+    
     return bytes_read;
 }
 
@@ -113,7 +125,7 @@ traverse(const char *path)
     ChanFSObj *traverse_ptr = root;
 
     int query_successful = 1;
-    while (token != NULL) {
+    while (token) {
         if (traverse_ptr->base_mode != S_IFDIR) {
             fprintf(stderr, "Error: attempting to traverse over a file or other.\n");
             query_successful = 0;

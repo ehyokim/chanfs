@@ -232,7 +232,7 @@ parse_html_for_thread(Thread thread)
                         }
                         next_slot = post->replies_from;
                     }  
-
+                    /* Add our reply to the current post's replies_from array */
                     *next_slot = later_post->no;
                     next_slot++;
                     post->num_replies_from++;
@@ -357,7 +357,7 @@ allo_fail:
 StrRepBuffer 
 new_str_rep_buffer(char *input_str_buffer, int buffer_size) 
 {
-    if (input_str_buffer != NULL) {
+    if (input_str_buffer) {
         int str_len_in_buf = strlen(input_str_buffer);
         return (StrRepBuffer) {buffer_size, 
                                str_len_in_buf,
@@ -389,6 +389,7 @@ concat_filename_ext(Post *post, FilenameType type)
     char *filename = (type == ORIGINAL) ? post->filename : post->tim;
   
     if (!filename || !(post->ext)) {
+        fprintf(stderr, "Error: Integrity failure. Post has a filename but no renamed filename.");
         return NULL;
     }
 
@@ -411,7 +412,7 @@ concat_ori_truncated_filename_ext(Post *post, char buffer[])
         return 0;
     }
 
-    strncpy(buffer, post->filename, MAX_FILENAME_LEN - 6);
+    strncpy(buffer, post->filename, MAX_FILENAME_LEN - MAX_EXT_LEN - 1);
     strcat(buffer, post->ext);
 
     return 1;

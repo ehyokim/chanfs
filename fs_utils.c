@@ -36,7 +36,7 @@ generate_fs(char *board_strs[])
     root->generated_flag = 1;
     
     /* Generate all of the board directories housing all of the threads. */
-    while (*board_strs != NULL) {
+    while (*board_strs) {
         ChanFSObj *board_dir_obj = init_dir(*board_strs, root, time(NULL), BOARD_DIR, (AssoInfo) *board_strs);
         if (!board_dir_obj) {
             fprintf(stderr, "Error: Could not allocate memory for board directory FS object.\n");
@@ -63,7 +63,7 @@ generate_board_dir(ChanFSObj *board_dir_object)
         Post *thread_op = results.threads + i;
         char *thread_dir_name = set_thread_dir_name(thread_op);
 
-        if(thread_dir_name != NULL) {         
+        if(thread_dir_name) {         
             init_dir(thread_dir_name, board_dir_object, thread_op->timestamp, THREAD_DIR, (AssoInfo) thread_op);
         }
     }
@@ -84,7 +84,7 @@ generate_thread_dir(ChanFSObj *thread_dir_object)
         init_file("Thread.txt", thread_dir_object, thread_op->timestamp, THREAD_OP_TEXT, (AssoInfo) thread_replies); //Add thread.txt
 
         char *concat_name = concat_filename_ext(thread_op, ORIGINAL);
-        if (concat_name != NULL) {
+        if (concat_name) {
             init_file(concat_name, thread_dir_object, thread_op->timestamp, ATTACHED_FILE, thread_dir_object->asso_info);     
         }
 
@@ -108,7 +108,7 @@ generate_post_dir(ChanFSObj *post_dir_object)
     init_file("Post.txt", post_dir_object, post->timestamp, POST_TEXT, post_dir_object->asso_info); //Add Post text to each reply directory.
 
     char *concat_name = concat_filename_ext(post, ORIGINAL);
-    if (concat_name != NULL) {
+    if (concat_name) {
         init_file(concat_name, post_dir_object, post->timestamp, ATTACHED_FILE, post_dir_object->asso_info); //Add Image file if it exists to each post directory.   
     }
 }
@@ -147,7 +147,6 @@ download_attached_file(Post *post)
 {
     char *concat_name = concat_filename_ext(post, RENAMED);
     if (!concat_name) {
-        fprintf(stderr, "Error: Integrity failure. Post has a filename but no renamed filename.");
         return (AttachedFile) {NULL, 0};
     }
 
@@ -186,7 +185,7 @@ write_to_file_from_attached_file(ChanFSObj *file_obj, AttachedFile attached_file
 {
     Chanfile *file = (Chanfile *) &(file_obj->fs_obj);    
     file->contents = attached_file.file;
-    file->size = attached_file.size;
+    //file->size = attached_file.size; (Praying that the filesize from the JSON actually matches up with the size we have in memory)
 }
 
 /* A simple function that just sets a file FS object's contents to some aggregate string representation buffer. */
@@ -205,8 +204,8 @@ set_thread_dir_name(Post *thread_op)
 {   
     char *untreated_dir_name;
 
-    if ((untreated_dir_name = thread_op->sub) != NULL);
-    else if((untreated_dir_name = thread_op->com) != NULL);
+    if (untreated_dir_name = thread_op->sub);
+    else if(untreated_dir_name = thread_op->com);
     else {
         untreated_dir_name = "No Subject";
     }
@@ -256,7 +255,6 @@ add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
     if (dir->num_of_children >= dir->num_of_children_slots) {
         int new_num_of_children_slots = dir->num_of_children_slots + INIT_NUM_CHILD_SLOTS;
         ChanFSObj **obj_ptr = realloc(dir->children, new_num_of_children_slots * sizeof(ChanFSObj *));
-
         if (!obj_ptr) {
             fprintf(stderr, "Error: Memory reallocation failed for procedure to" 
                             "expand children slot for directory object.\n");
@@ -301,7 +299,7 @@ init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirtype type, AssoInfo 
     Chandir new_chandir = {children, INIT_NUM_CHILD_SLOTS, 0, type};
     new_fs_obj->fs_obj = (FSObj) new_chandir;
     
-    if (parent_dir != NULL) {
+    if (parent_dir) {
         if (parent_dir->base_mode != S_IFDIR) {
             fprintf(stderr, "Error: Attempting to add child FS object \"%s\" to a file or other.\n", name);
             goto add_to_file_fail;
@@ -345,7 +343,12 @@ init_file(char *name, ChanFSObj *curr_dir, time_t time, Filetype type, AssoInfo 
     new_fs_obj->generated_flag = 0;
     new_fs_obj->asso_info = asso_info;
 
-    Chanfile new_chanfile = {0, curr_dir, type, {}};
+    Post *asso_post = (type == ATTACHED_FILE) ? asso_info.post : NULL;
+    Chanfile new_chanfile = {(asso_post) ? asso_info.post->filesize : 0, 
+                            curr_dir, 
+                            type, 
+                            NULL};
+
     new_fs_obj->fs_obj = (FSObj) new_chanfile;
 
     if (curr_dir->base_mode != S_IFDIR) {
