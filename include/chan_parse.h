@@ -32,7 +32,7 @@ typedef struct Board {
 
 typedef struct Thread {
     Post *posts;
-    int num_of_replies; //Change this to num_of_posts
+    int num_of_posts; //Change this to num_of_posts
 } Thread;
 
 typedef struct AttachedFile {

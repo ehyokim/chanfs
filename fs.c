@@ -117,7 +117,7 @@ traverse(const char *path)
         if (traverse_ptr->base_mode != S_IFDIR) {
             fprintf(stderr, "Error: attempting to traverse over a file or other.\n");
             query_successful = 0;
-            goto traverse_error;
+            break;
         }
 
         Chandir curr_dir = traverse_ptr->fs_obj.chandir;
@@ -137,13 +137,12 @@ traverse(const char *path)
                     "Error: no such file or directory with the name: %s was found.\n", 
                     token);
             query_successful = 0;
-            goto traverse_error;
+            break;
         }
 
         token = strtok(NULL, "/");
     }
 
-traverse_error:
     free(pathcpy);
     return (query_successful) ? traverse_ptr : NULL;
 }

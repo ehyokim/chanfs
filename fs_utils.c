@@ -77,7 +77,9 @@ generate_thread_dir(ChanFSObj *thread_dir_object)
         char *board = thread_op->board;
 
         Thread thread_replies = parse_thread(board, thread_op->no);
-        int num_of_replies = thread_replies.num_of_replies;
+        parse_html_for_thread(thread_replies);
+
+        int num_of_posts = thread_replies.num_of_posts;
 
         init_file("Thread.txt", thread_dir_object, thread_op->timestamp, THREAD_OP_TEXT, (AssoInfo) thread_replies); //Add thread.txt
 
@@ -87,7 +89,7 @@ generate_thread_dir(ChanFSObj *thread_dir_object)
         }
 
         Post *replies = thread_replies.posts;
-        for (int k = 1; k < num_of_replies; k++) { //Skip first post, which is OP.
+        for (int k = 1; k < num_of_posts; k++) { //Skip first post, which is OP.
             Post *reply = replies + k;
             char *post_no_str = malloc(MAX_POST_NO_DIGITS);
             int intres_res = post_int_to_str(reply->no, post_no_str);
@@ -121,11 +123,10 @@ generate_file_contents(ChanFSObj *file_obj)
         StrRepBuffer str_buffer;
         switch (file_type) {
             case POST_TEXT:
-                str_buffer = generate_post_str_rep(file_obj->asso_info.post); //BAD: Post contents are generated twice. Fix this.
+                str_buffer = generate_post_str_rep(file_obj->asso_info.post); 
                 write_to_file_from_buffer(file_obj, str_buffer);
                 break;
             case THREAD_OP_TEXT:
-                parse_html_for_thread(file_obj->asso_info.thread);
                 str_buffer = generate_thread_str_rep(file_obj->asso_info.thread);
                 write_to_file_from_buffer(file_obj, str_buffer);
                 break;
@@ -257,7 +258,8 @@ add_child(ChanFSObj *dir_fs_object, ChanFSObj *child)
         ChanFSObj **obj_ptr = realloc(dir->children, new_num_of_children_slots * sizeof(ChanFSObj *));
 
         if (!obj_ptr) {
-            fprintf(stderr, "Error: Memory reallocation failed for procedure to expand children slot for directory object.\n");
+            fprintf(stderr, "Error: Memory reallocation failed for procedure to" 
+                            "expand children slot for directory object.\n");
             return 0; // Do not add child if no memory can be allocated.
         }
 

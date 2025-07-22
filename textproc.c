@@ -86,7 +86,7 @@ tokenizer_callback(lxb_html_tokenizer_t *tkz, lxb_html_token_t *token, void *ctx
                  * print the closing parenthesis. */
                 if (*is_link) {
                     value_str = ")";
-                    len = 2;
+                    len = 1;
                     *is_link = 0;
                 } else {
                     return token;
@@ -123,9 +123,10 @@ tokenizer_callback(lxb_html_tokenizer_t *tkz, lxb_html_token_t *token, void *ctx
                 value_str = "(Link: ";
                 len = 7;
                 *is_link = 1;
-            } 
-
-            return token;
+            } else {
+                /* Otherwise, if it's some other link, we don't care and discard. */
+                return token;
+            }
             break;
         case LXB_TAG_BR:
             value_str = "\n\n";
@@ -146,6 +147,11 @@ parse_html(Post *post)
 {
     lxb_status_t status;
     lxb_html_tokenizer_t *tkz;
+    char *raw_str = post->com;
+
+    if (!raw_str) {
+        return NULL;
+    }
 
     tkz = lxb_html_tokenizer_create();
     status = lxb_html_tokenizer_init(tkz);
@@ -153,8 +159,6 @@ parse_html(Post *post)
         fprintf(stderr, "Error: HTML tokenizer initization failed.");
         goto init_fail;
     }
-
-    char *raw_str = post->com;
 
     /* Initialize an empty buffer equal to length of input string */
     size_t tot_len_input = strlen(raw_str);
@@ -207,15 +211,15 @@ init_fail:
 void 
 parse_html_for_thread(Thread thread)
 {
-    int num_of_replies = thread.num_of_replies;
+    int num_of_posts = thread.num_of_posts;
     Post *replies = thread.posts;
-    for (int i = (num_of_replies - 1); i >= 0; i--) {
+    for (int i = (num_of_posts - 1); i >= 0; i--) {
         Post *post = replies + i;
         post->parsed_com = parse_html(post);
 
         int *next_slot = NULL; 
         /* Run through all of the posts made after the current post */
-        for (int j = i+1; j < num_of_replies; j++) {
+        for (int j = i+1; j < num_of_posts; j++) {
             Post *later_post = replies + j;
             int *lp_replies_to = later_post->replies_to;
             /* Check if any replies made to the current post from the later post */
@@ -224,7 +228,7 @@ parse_html_for_thread(Thread thread)
                     /* We only allocate memory when is at least one reply to the current post */
                     if (!next_slot) {
                         /* Since OP can't reply to himself, this is sufficiently large for all replies */
-                        post->replies_from = malloc(num_of_replies * sizeof(int));
+                        post->replies_from = malloc(num_of_posts * sizeof(int));
                         if (!(post->replies_from)) {
                             fprintf(stderr, "Error: Cannot allocate memory for replies from array for post\n");
                             goto allo_fail;
@@ -257,7 +261,7 @@ generate_thread_str_rep(Thread thread)
 
     flush_divider_to_str_rep_buffer(&thread_str_buffer);
 
-    for (int i = 1; i < thread.num_of_replies; i++) {
+    for (int i = 1; i < thread.num_of_posts; i++) {
         StrRepBuffer reply_str_buffer = generate_post_str_rep(replies + i);
         concat_str_rep_buffers(&thread_str_buffer, reply_str_buffer);
         free_str_rep_buffer(reply_str_buffer);

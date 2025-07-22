@@ -12,7 +12,8 @@ extern const int chan_str_len;
 
 typedef struct MemoryStruct {
   char *memory;
-  size_t size;
+  size_t mem_size;
+  size_t buffer_size;
 } MemoryStruct;
 
 static int find_total_num_threads(cJSON *catalog);
@@ -27,16 +28,19 @@ write_to_memory_callback(void *contents, size_t size, size_t nmemb, void *userp)
     size_t realsize = size * nmemb;
     MemoryStruct *mem = (MemoryStruct *) userp;
 
-    char *ptr = realloc(mem->memory, mem->size + realsize + 1);
-    if (!ptr) {
-        printf("Write memory callback failed to allocate memory.\n");
-        return 0;
+    if (mem->mem_size + (realsize + 1) >= mem->buffer_size) {
+        char *ptr = realloc(mem->memory, 2*(mem->buffer_size + realsize + 1));
+        if (!ptr) {
+            fprintf(stderr, "Write memory callback failed to allocate memory.\n");
+            return 0;
+        }
+        mem->memory = ptr;
+        mem->buffer_size = 2*(mem->buffer_size + realsize + 1);
     }
 
-    mem->memory = ptr;
-    memcpy(&(mem->memory[mem->size]), contents, realsize);
-    mem->size += realsize;
-    mem->memory[mem->size] = 0;
+    memcpy(&(mem->memory[mem->mem_size]), contents, realsize);
+    mem->mem_size += realsize;
+    mem->memory[mem->mem_size] = 0;
 
     return realsize;
 } 
@@ -55,13 +59,14 @@ retrieve_webpage(char *url)
 
     }
 
-    char *mem_chunk = chunk.memory = malloc(1);
+    char *mem_chunk = chunk.memory = malloc(INIT_CURL_MEM_BUF_SIZE);
     if (!mem_chunk) {
         fprintf(stderr, "Initial memory chunk could not be allocated");
         return (MemoryStruct) {NULL, -1};
 
     }
-    chunk.size = 0;
+    chunk.mem_size = 0;
+    chunk.buffer_size = INIT_CURL_MEM_BUF_SIZE;
 
     curl_handle = curl_easy_init();
     curl_easy_setopt(curl_handle, CURLOPT_URL, url) ;
@@ -98,7 +103,7 @@ download_file(char *board, char *filename)
         return (AttachedFile) {NULL, 0};
     }
 
-    return (AttachedFile) {chunk.memory, chunk.size};
+    return (AttachedFile) {chunk.memory, chunk.mem_size};
 }
 
 Thread 
@@ -127,7 +132,7 @@ parse_thread(char *board, int thread_op_no)
     }
 
     /* Everything will be zero or NULL at initialization */
-    results.num_of_replies = total_num_replies;
+    results.num_of_posts = total_num_replies;
     results.posts = calloc((total_num_replies + 1), sizeof(Post));
 
     if (!results.posts) {
@@ -195,7 +200,6 @@ parse_board(char *board)
     /* Everything will be zero or NULL at initialization */
     results.num_of_threads = total_num_threads;
     results.threads = calloc((total_num_threads + 1), sizeof(Post)); 
-
     if (!results.threads) {
         fprintf(stderr, "Error: Could not allocate memory for Post array for Board struct. \n");
         goto traverse_fail;
@@ -349,7 +353,7 @@ void
 free_thread_parse_results(Thread results)
 {
     /* Free up parse results. */
-    for (int j = 0; j < results.num_of_replies; j++) {
+    for (int j = 0; j < results.num_of_posts; j++) {
         free_post(results.posts[j]);
     }
 }
