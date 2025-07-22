@@ -93,7 +93,6 @@ tokenizer_callback(lxb_html_tokenizer_t *tkz, lxb_html_token_t *token, void *ctx
                 }
                 break;
             }
-
             name = lxb_html_token_attr_name(token->attr_first, NULL);  
             if (strcmp(name, "onclick") == 0) {
                 /* This should be href since we are working with a reply here */
@@ -101,7 +100,6 @@ tokenizer_callback(lxb_html_tokenizer_t *tkz, lxb_html_token_t *token, void *ctx
                 value_str = attr->value;
                 /* Start from the end where the reply post number is located */
                 value_str += strlen(value_str);
-                
                 /* Find the reply post number from the href field */
                 char c;
                 len = 0;
@@ -114,7 +112,6 @@ tokenizer_callback(lxb_html_tokenizer_t *tkz, lxb_html_token_t *token, void *ctx
                 }
                 /* Begin from first digit of reply post */
                 value_str++;
-                 
                 /* Now record the found reply */
                 add_reply_to_html_data_struct(value_str, parsed_text_ptr);
                 return token;
@@ -129,8 +126,8 @@ tokenizer_callback(lxb_html_tokenizer_t *tkz, lxb_html_token_t *token, void *ctx
             }
             break;
         case LXB_TAG_BR:
-            value_str = "\n\n";
-            len = 2;
+            value_str = "\n";
+            len = 1;
             break;
         default:
             return token;
@@ -454,36 +451,60 @@ append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
     *str_buffer->str_end = 0; // End nul terminator
 }
 
-/* Takes a string and appends to the supplied string representation buffer.
- * The number of columns is controlled by a compile-time constant for now. 
+/* 
+ * Takes a string and appends to the supplied string representation buffer.
+ * The number of columns is controlled by a compile-time constant for now.  
+ * In its current form, this function does not strictly enforce the column limit
+ * It appends a word at a time until the the column limit is reached. This is to
+ * ensure that the output looks nicer.
  */
 static void 
 append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len)
 {
     check_buffer_dims(str_buffer, str_len + (str_len / MAX_NUM_COLS + 1));
 
-    char *p = str;
     char *tail_ptr = str_buffer->str_end;
     int *used_cols = &str_buffer->used_cols;
-    for (;p < str + str_len; p++, tail_ptr++) {
+    char *word_begin = str;
+    char *p;
+    int word_len;
+    for (p = str; p < str + str_len; p++) {
         char c = *p;
-        *tail_ptr = c;
         (*used_cols)++;
-        if (c == '\n') {
-            *used_cols = 0;
-        } else if (*used_cols == MAX_NUM_COLS) {
-            *(++tail_ptr) = '\n';
-            *used_cols = 0;
-            /* Skip spaces if we are on a fresh line in order to have better formatting */
-            if (*(p + 1) == ' ') { 
-                p++;
+
+        /* 
+         * If we find a word saturating the column limit or a newline character, 
+         * copy it into the buffer 
+         */
+        if ((c == '\n') || ((c == ' ') && (*used_cols >= MAX_NUM_COLS))) {
+            word_len = (p - word_begin) + 1;
+            memcpy(tail_ptr, word_begin, word_len);
+            tail_ptr += word_len;
+            /* If we stopped at the end of a word, we start a new line. 
+             * Note that this doesn't take into account a super long string with no spaces.
+             * In that case, we just have to print the whole thing out on one line, which sucks.
+             */
+            if (c == ' ') {
+                *(tail_ptr - 1) = '\n';              
             }
+            word_begin += word_len;
+            *used_cols = 0;
         }
+    }
+
+    /* Flush the remaining characters into the buffer */
+    word_len = p - word_begin;
+    memcpy(tail_ptr, word_begin, word_len);
+    tail_ptr += word_len;
+
+    if (*used_cols >= MAX_NUM_COLS) {
+        *tail_ptr++ = '\n';
+        *used_cols = 0;
     }
 
     str_buffer->curr_str_size += (tail_ptr - str_buffer->str_end);  
     str_buffer->str_end = tail_ptr;
-   *str_buffer->str_end = '\0'; //Append nul character.      
+   *str_buffer->str_end = 0; //Append nul character.      
 }
 
 /* Append a divider to the text file represented by the supplied string representaion buffer. */

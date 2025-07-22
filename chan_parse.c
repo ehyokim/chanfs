@@ -263,6 +263,11 @@ parse_post_json_object(Post *post, cJSON *post_json_obj)
     cJSON *filename = cJSON_GetObjectItemCaseSensitive(post_json_obj, "filename");
     if (cJSON_IsString(filename))
         post->filename = strdup(filename->valuestring);
+
+    cJSON *filesize = cJSON_GetObjectItemCaseSensitive(post_json_obj, "fsize");
+    if (cJSON_IsNumber(filesize)) {
+        post->filesize = (size_t) filesize->valueint;
+    }
     
     cJSON *ext = cJSON_GetObjectItemCaseSensitive(post_json_obj, "ext");
     if (cJSON_IsString(ext))
