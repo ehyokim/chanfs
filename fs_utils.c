@@ -94,7 +94,7 @@ generate_thread_dir(ChanFSObj *thread_dir_object)
         for (int k = 1; k < num_of_posts; k++) { //Skip first post, which is OP.
             Post *reply = replies + k;
             char *post_no_str = malloc(MAX_POST_NO_DIGITS + 1);
-            int intres_res = post_int_to_str(reply->no, post_no_str);
+            int intres_res = post_no_to_str(reply->no, post_no_str);
 
             if (intres_res >= 0) {
                 init_dir(post_no_str, thread_dir_object, reply->timestamp, POST_DIR, (AssoInfo) reply); //Create post directory
@@ -231,7 +231,7 @@ truncate_name(char *name)
     }
 
     strncpy(trun_title_buffer, name, MAX_FILENAME_LEN);
-    trun_title_buffer[MAX_FILENAME_LEN] = '\0';
+    trun_title_buffer[MAX_FILENAME_LEN] = 0;
 
     return trun_title_buffer;
 }
@@ -244,8 +244,18 @@ static void
 sanitize_name(char *name) 
 {
     if (!name) return;
-    for (; *name != '\0'; name++)
-        *name = (*name == '/') ? '#' : *name;
+    for (; *name != '\0'; name++) {
+        switch (*name) {
+            case '/':
+                *name = '#';
+                break;
+            case ' ':
+                *name = '_';
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 /* Adding any child file or directory underneath a supplied directory FS object. */

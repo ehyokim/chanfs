@@ -46,7 +46,7 @@ typedef struct AttachedFile {
 Board parse_board(char *board);
 Thread parse_thread(char *board, postno_t thread_op_no);
 AttachedFile download_file(char *board, char *filename);
-int post_int_to_str(postno_t thread_no, char buffer[]); 
+int post_no_to_str(postno_t thread_no, char buffer[]); 
 void free_board_parse_results(Board parse_res);
 void free_post(Post post);
 void free_thread_parse_results(Thread results);

@@ -283,13 +283,13 @@ constr_thread_url(char *board, postno_t thread_op_no)
 {
     char post_buffer[MAX_POST_NO_DIGITS + 1];
 
-    int intstr_res = post_int_to_str(thread_op_no, post_buffer);
+    int intstr_res = post_no_to_str(thread_op_no, post_buffer);
     if (intstr_res < 0) {
         return NULL;
     }
 
     size_t url_len = chan_str_len + strlen(board) + MAX_POST_NO_DIGITS + 12;
-
+    
     char *url = malloc(url_len);
     if (!url) {
         fprintf(stderr, "Error: Could not allocate memory to create url to OP thread.\n");
@@ -301,7 +301,7 @@ constr_thread_url(char *board, postno_t thread_op_no)
 }
 
 int 
-post_int_to_str(postno_t thread_no, char buffer[]) 
+post_no_to_str(postno_t thread_no, char buffer[]) 
 {
     return snprintf(buffer, MAX_POST_NO_DIGITS, "%llu", thread_no);
 }

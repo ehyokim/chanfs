@@ -10,9 +10,9 @@
 #include "include/textproc.h"
 
 
-static void append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len);
+static void append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, size_t str_len);
 static void flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer);
-static void check_buffer_dims(StrRepBuffer *str_buffer, int str_len);
+static int check_buffer_dims(StrRepBuffer *str_buffer, size_t str_len);
 static size_t generate_time_string(const time_t t, char buffer[]);
 static void concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2);
 static void append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *str);
@@ -31,18 +31,16 @@ static int
 add_reply_to_html_data_struct(char *reply_no, HTMLParseStruct *pd)
 {
     if (pd->num_replies_found == 0) {
-        pd->replies_found = malloc(30 * sizeof(postno_t)); //Probably won't be more than 30 replies.
-        
+        /* Probably won't be more than 30 replies. */
+        pd->replies_found = malloc(30 * sizeof(postno_t)); 
         if (!(pd->replies_found)) {
             fprintf(stderr, "Error: Cannot allocate memory for replies array in HTML parser struct\n");
             return 1;
         }
-        
         pd->size_of_reply_buf = 30;
 
     } else if ((pd->num_replies_found + 1) >= pd->size_of_reply_buf) {
-         postno_t *np = realloc(pd->replies_found, 2*pd->num_replies_found * sizeof(postno_t));
-
+        postno_t *np = realloc(pd->replies_found, (2*pd->num_replies_found) * sizeof(postno_t));
         if (!np) {
             fprintf(stderr, "Error: Cannot allocate memory for replies array in HTML parser struct\n");
             return 1;                        
@@ -295,14 +293,10 @@ generate_post_str_rep(Post *post)
     char filename_buffer[MAX_FILENAME_LEN + 1];
 
     StrRepBuffer buffer = new_str_rep_buffer(NULL, 0);
-    if (buffer.buffer_size == 0) {
-        fprintf(stderr, "Error; Could not allocate memory to start a new StrRepBuffer.\n");
-        return buffer;
-    }
 
     append_to_buffer_formatted(&buffer, "Board: /%s/\n", post->board);
 
-    int intstr_res = post_int_to_str(post->no, post_no_buffer); 
+    int intstr_res = post_no_to_str(post->no, post_no_buffer); 
     if (intstr_res >= 0) {
         append_to_buffer_formatted(&buffer, "No: %s\n", post_no_buffer);
     }
@@ -355,10 +349,10 @@ allo_fail:
  * an empty string. 
  */
 StrRepBuffer 
-new_str_rep_buffer(char *input_str_buffer, int buffer_size) 
+new_str_rep_buffer(char *input_str_buffer, size_t buffer_size) 
 {
     if (input_str_buffer) {
-        int str_len_in_buf = strlen(input_str_buffer);
+        size_t str_len_in_buf = strlen(input_str_buffer);
         return (StrRepBuffer) {buffer_size, 
                                str_len_in_buf,
                                0, 
@@ -367,19 +361,11 @@ new_str_rep_buffer(char *input_str_buffer, int buffer_size)
                               };
     }
 
-    buffer_size = 100; // Prob should turn this into a constant.
-    char *buffer_start = malloc(buffer_size);
-
-    if (!buffer_start) {
-        buffer_start = "";
-        buffer_size = 0;
-    }
-
-    return (StrRepBuffer) {buffer_size, 
+    return (StrRepBuffer) {0, 
                            0, 
                            0, 
-                           buffer_start, 
-                           buffer_start};
+                           NULL, 
+                           NULL};
 }
 
 /* Concatenates the name of an attached file associated with a post and its extention together. */
@@ -431,7 +417,9 @@ generate_time_string(const time_t t, char buffer[])
 static void 
 concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
 {
-    check_buffer_dims(s1, s2.curr_str_size);
+    if(check_buffer_dims(s1, s2.curr_str_size) > 0) {
+        return;
+    }
     memcpy(s1->str_end, s2.buffer_start, s2.curr_str_size);
     s1->str_end += s2.curr_str_size;
     s1->curr_str_size += s2.curr_str_size;   
@@ -441,9 +429,11 @@ concat_str_rep_buffers(StrRepBuffer *s1, StrRepBuffer s2)
  * This routine is simply append a string to buffer with no regard for a column limit.
  */
 void 
-append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
+append_to_buffer(StrRepBuffer *str_buffer, char *str, size_t str_len)
 {
-    check_buffer_dims(str_buffer, str_len);
+    if(check_buffer_dims(str_buffer, str_len) > 0) {
+        return;
+    }
     memcpy(str_buffer->str_end, str, str_len);
 
     str_buffer->str_end += str_len;
@@ -460,9 +450,11 @@ append_to_buffer(StrRepBuffer *str_buffer, char *str, int str_len)
  * ensure that the output looks nicer.
  */
 static void 
-append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len)
+append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, size_t str_len)
 {
-    check_buffer_dims(str_buffer, str_len + (str_len / MAX_NUM_COLS + 1));
+    if((!str) || (check_buffer_dims(str_buffer, str_len + (str_len / MAX_NUM_COLS + 1)) > 0)) {
+        return;
+    }
 
     char *tail_ptr = str_buffer->str_end;
     int *used_cols = &str_buffer->used_cols;
@@ -472,7 +464,6 @@ append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len)
     for (p = str; p < str + str_len; p++) {
         char c = *p;
         (*used_cols)++;
-
         /* 
          * If we find a word saturating the column limit or a newline character, 
          * copy it into the buffer 
@@ -512,7 +503,9 @@ append_to_buffer_cols(StrRepBuffer *str_buffer, char *str, int str_len)
 static void 
 flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
 {
-    check_buffer_dims(str_buffer, MAX_NUM_COLS);
+    if(check_buffer_dims(str_buffer, MAX_NUM_COLS) > 0) {
+        return;
+    }
 
     char *tail_ptr = str_buffer->str_end;
     *tail_ptr = *(tail_ptr + MAX_NUM_COLS - 1) = '\n'; //Insert the divider into the buffer.
@@ -522,22 +515,34 @@ flush_divider_to_str_rep_buffer(StrRepBuffer *str_buffer)
     str_buffer->curr_str_size += MAX_NUM_COLS;
 }
 
-static void 
-check_buffer_dims(StrRepBuffer *str_buffer, int str_len) 
+static int 
+check_buffer_dims(StrRepBuffer *str_buffer, size_t str_len) 
 {
-    if (str_buffer->curr_str_size + (str_len + 1) > str_buffer->buffer_size) {
-        int new_buffer_size = str_buffer->buffer_size + (str_len + 1) + 100;
-
-        char *new_ptr = realloc(str_buffer->buffer_start, new_buffer_size);
+    char *new_ptr;
+    if (str_buffer->buffer_size == 0) {
+        new_ptr = str_buffer->buffer_start = malloc(str_len + 1);
         if (!new_ptr) {
             fprintf(stderr, "Error: Cannot reallocate new buffer or StrRepBuffer");
-            return;
+            return 1;
+        }
+        str_buffer->buffer_start = new_ptr;
+        str_buffer->str_end = str_buffer->buffer_start + str_buffer->curr_str_size;
+        str_buffer->buffer_size = str_len + 1;
+
+    } else if (str_buffer->curr_str_size + (str_len + 1) > str_buffer->buffer_size) {
+        size_t new_buffer_size = 2*(str_buffer->buffer_size + (str_len + 1));
+
+        new_ptr = realloc(str_buffer->buffer_start, new_buffer_size);
+        if (!new_ptr) {
+            fprintf(stderr, "Error: Cannot reallocate new buffer or StrRepBuffer");
+            return 1;
         }
 
         str_buffer->buffer_start = new_ptr;
         str_buffer->str_end = str_buffer->buffer_start + str_buffer->curr_str_size;
         str_buffer->buffer_size = new_buffer_size;
     } 
+    return 0;
 }
 
 /* An auxiliary function used to generate post and thread text files. 
@@ -557,7 +562,6 @@ append_to_buffer_formatted(StrRepBuffer *str_buffer, char *str_formatter, char *
 
     sprintf(formatted_str, str_formatter, str);
     append_to_buffer_cols(str_buffer, formatted_str, size_of_str);
-    str_buffer->used_cols = 0; //Reset the column counter.
     free(formatted_str);
 }
 

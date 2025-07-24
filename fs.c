@@ -25,7 +25,7 @@ do_getattr(const char *path, struct stat *st)
     }
     if (found_obj->base_mode == S_IFREG) {
         Chanfile file = found_obj->fs_obj.chanfile;
-        /* Generate the contents of files and directories as needed. */
+        /* Generate the contents of files as needed. */
         if (!(found_obj->generated_flag)) {
             generate_file_contents(found_obj);
         }
