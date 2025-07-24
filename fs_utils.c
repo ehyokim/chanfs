@@ -31,6 +31,7 @@ generate_fs(char *board_strs[])
     root = init_dir("/", NULL, time(NULL), ROOT_DIR, (AssoInfo)((Post *) NULL));
     if (!root) {
         fprintf(stderr, "Error: Could not allocate memory for root directory FS object.\n");
+        /* If we can't even allocate memory for the root object, then just abort the whole thing */
         exit(-1);
     }
     root->generated_flag = 1;
@@ -83,6 +84,7 @@ generate_thread_dir(ChanFSObj *thread_dir_object)
 
         init_file("Thread.txt", thread_dir_object, thread_op->timestamp, THREAD_OP_TEXT, (AssoInfo) thread_replies); //Add thread.txt
 
+        /* Create a FS object for the attached file if one exists */
         char *concat_name = concat_filename_ext(thread_op, ORIGINAL);
         if (concat_name) {
             init_file(concat_name, thread_dir_object, thread_op->timestamp, ATTACHED_FILE, thread_dir_object->asso_info);     
@@ -91,7 +93,7 @@ generate_thread_dir(ChanFSObj *thread_dir_object)
         Post *replies = thread_replies.posts;
         for (int k = 1; k < num_of_posts; k++) { //Skip first post, which is OP.
             Post *reply = replies + k;
-            char *post_no_str = malloc(MAX_POST_NO_DIGITS);
+            char *post_no_str = malloc(MAX_POST_NO_DIGITS + 1);
             int intres_res = post_int_to_str(reply->no, post_no_str);
 
             if (intres_res >= 0) {
@@ -314,10 +316,8 @@ init_dir(char *name, ChanFSObj *parent_dir, time_t time, Dirtype type, AssoInfo 
 
 add_to_file_fail:
     free(children);
-	
 allo_child_fail:
     free(new_fs_obj);
-
 allo_fs_obj_fail:
     return NULL;
 }
@@ -363,7 +363,6 @@ init_file(char *name, ChanFSObj *curr_dir, time_t time, Filetype type, AssoInfo 
 
 add_to_file_fail:
     free(new_fs_obj);
-
 allo_fs_obj_fail:
     return NULL;
 }

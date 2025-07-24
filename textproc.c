@@ -23,7 +23,7 @@ typedef struct html_parse_data {
     int is_link;
     int num_replies_found;
     int size_of_reply_buf;
-    int *replies_found;
+    postno_t *replies_found;
     StrRepBuffer parsed_text;
 } HTMLParseStruct;
 
@@ -31,7 +31,7 @@ static int
 add_reply_to_html_data_struct(char *reply_no, HTMLParseStruct *pd)
 {
     if (pd->num_replies_found == 0) {
-        pd->replies_found = malloc(30 * sizeof(int)); //Probably won't be more than 30 replies.
+        pd->replies_found = malloc(30 * sizeof(postno_t)); //Probably won't be more than 30 replies.
         
         if (!(pd->replies_found)) {
             fprintf(stderr, "Error: Cannot allocate memory for replies array in HTML parser struct\n");
@@ -41,7 +41,7 @@ add_reply_to_html_data_struct(char *reply_no, HTMLParseStruct *pd)
         pd->size_of_reply_buf = 30;
 
     } else if ((pd->num_replies_found + 1) >= pd->size_of_reply_buf) {
-         int *np = realloc(pd->replies_found, 2*pd->num_replies_found * sizeof(int));
+         postno_t *np = realloc(pd->replies_found, 2*pd->num_replies_found * sizeof(postno_t));
 
         if (!np) {
             fprintf(stderr, "Error: Cannot allocate memory for replies array in HTML parser struct\n");
@@ -52,7 +52,7 @@ add_reply_to_html_data_struct(char *reply_no, HTMLParseStruct *pd)
         pd->size_of_reply_buf = 2*pd->num_replies_found;
     } 
     
-    *(pd->replies_found + pd->num_replies_found) = atoi(reply_no);
+    *(pd->replies_found + pd->num_replies_found) = atoll(reply_no);
     pd->num_replies_found++;
 
     return 0;
@@ -214,18 +214,18 @@ parse_html_for_thread(Thread thread)
         Post *post = replies + i;
         post->parsed_com = parse_html(post);
 
-        int *next_slot = NULL; 
+        postno_t *next_slot = NULL; 
         /* Run through all of the posts made after the current post */
         for (int j = i+1; j < num_of_posts; j++) {
             Post *later_post = replies + j;
-            int *lp_replies_to = later_post->replies_to;
+            postno_t *lp_replies_to = later_post->replies_to;
             /* Check if any replies made to the current post from the later post */
             for (int k = 0; k < later_post->num_replies_to; k++) {
                 if (post->no == lp_replies_to[k]) {
                     /* We only allocate memory when is at least one reply to the current post */
                     if (!next_slot) {
                         /* Since OP can't reply to himself, this is sufficiently large for all replies */
-                        post->replies_from = malloc(num_of_posts * sizeof(int));
+                        post->replies_from = malloc(num_of_posts * sizeof(postno_t));
                         if (!(post->replies_from)) {
                             fprintf(stderr, "Error: Cannot allocate memory for replies from array for post\n");
                             goto allo_fail;
@@ -332,7 +332,7 @@ generate_post_str_rep(Post *post)
 
         size_t tail = 0;
         for (int i = 0; i < post->num_replies_from; i++) {
-            int res = sprintf(reply_str_buf + tail, " %d", post->replies_from[i]);
+            int res = sprintf(reply_str_buf + tail, " %llu", post->replies_from[i]);
             if (res < 0) {
                 fprintf(stderr, "Error: sprintf failed while writing reply numbers.\n");
                 goto print_fail;
@@ -385,13 +385,13 @@ new_str_rep_buffer(char *input_str_buffer, int buffer_size)
 /* Concatenates the name of an attached file associated with a post and its extention together. */
 char *
 concat_filename_ext(Post *post, FilenameType type)
-{
-    char *filename = (type == ORIGINAL) ? post->filename : post->tim;
-  
-    if (!filename || !(post->ext)) {
-        fprintf(stderr, "Error: Integrity failure. Post has a filename but no renamed filename.");
+{ 
+    /* If no image was uploaded, return NULL */
+    if (!(post->ext)) {
         return NULL;
     }
+
+    char *filename = (type == ORIGINAL) ? post->filename : post->tim;
 
     char *concat_file_str = malloc(strlen(filename) + strlen(post->ext) + 1);
     if (!concat_file_str) {

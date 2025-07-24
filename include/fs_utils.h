@@ -1,7 +1,13 @@
 #include <sys/types.h>
 
-#define FILEPERMS  S_IRUSR | S_IRGRP | S_IROTH //TODO: fix these permissons. These are just a placeholder to make things work for now.
-#define DIRPERMS  S_IRUSR | S_IRGRP | S_IROTH
+/* For some reason, I need RWX user perms on MacOS. */
+#ifdef __APPLE__
+    #define FILEPERMS  S_IRWXU | S_IRGRP | S_IROTH
+    #define DIRPERMS  S_IRWXU | S_IRGRP | S_IROTH
+#else 
+    #define FILEPERMS S_IRUSR | S_IRGRP | S_IROTH 
+    #define DIRPERMS S_IRUSR | S_IRGRP | S_IROTH 
+#endif
 
 typedef enum file_type {
     THREAD_OP_TEXT, POST_TEXT, ATTACHED_FILE, ERROR_FILE

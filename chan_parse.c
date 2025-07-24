@@ -18,7 +18,7 @@ typedef struct MemoryStruct {
 
 static int find_total_num_threads(cJSON *catalog);
 static int find_total_num_replies(cJSON *thread);
-static char *constr_thread_url(char *board, int thread_op_no);
+static char *constr_thread_url(char *board, postno_t thread_op_no);
 static void parse_post_json_object(Post *post, cJSON *post_json_obj);
 static MemoryStruct retrieve_web_content(char *url);
 
@@ -106,7 +106,7 @@ download_file(char *board, char *filename)
 }
 
 Thread 
-parse_thread(char *board, int thread_op_no)
+parse_thread(char *board, postno_t thread_op_no)
 {
     Thread results;
     int success_status = 0;
@@ -179,7 +179,6 @@ parse_board(char *board)
     sprintf(catalog_url, "%s/%s/catalog.json", chan, board);
 
     char *webpage_text = retrieve_web_content(catalog_url).memory;
-
     if (!webpage_text)
         goto retrieve_fail;
 
@@ -240,7 +239,7 @@ static void
 parse_post_json_object(Post *post, cJSON *post_json_obj)
 {
     cJSON *no = cJSON_GetObjectItemCaseSensitive(post_json_obj, "no");
-    post->no = no->valueint;
+    post->no = (postno_t) no->valueint;
 
     cJSON *sub = cJSON_GetObjectItemCaseSensitive(post_json_obj, "sub");
     if (cJSON_IsString(sub)) 
@@ -280,7 +279,7 @@ parse_post_json_object(Post *post, cJSON *post_json_obj)
 }
 
 static char *
-constr_thread_url(char *board, int thread_op_no) 
+constr_thread_url(char *board, postno_t thread_op_no) 
 {
     char post_buffer[MAX_POST_NO_DIGITS + 1];
 
@@ -302,9 +301,9 @@ constr_thread_url(char *board, int thread_op_no)
 }
 
 int 
-post_int_to_str(int thread_no, char buffer[]) 
+post_int_to_str(postno_t thread_no, char buffer[]) 
 {
-    return snprintf(buffer, MAX_POST_NO_DIGITS, "%d", thread_no);
+    return snprintf(buffer, MAX_POST_NO_DIGITS, "%llu", thread_no);
 }
 
 static int 

@@ -53,11 +53,14 @@ do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset,
     filler(buffer, "..", NULL, 0);
 
     ChanFSObj *found_obj = traverse(path); //Traverse the FS to find the directory.
-    if (!found_obj)
+    if (!found_obj) {
         return -ENOENT;
+    }
 
-    if (!(found_obj->generated_flag)) //Generate the directory if it hasn't been already from a previous query.
+    /* Generate the directory if it hasn't been already from a previous query. */
+    if (!(found_obj->generated_flag)) {
         generate_dir_contents(found_obj);
+    } 
 
     Chandir dir = found_obj->fs_obj.chandir;
 
@@ -97,6 +100,11 @@ do_read(const char *path, char *buffer, size_t size, off_t offset, struct fuse_f
     off_t file_size = file.size;
     char *contents = file.contents;
 
+    if (!contents) {
+        fprintf(stderr, "Error: file contents are null. Cannot read file.\n");
+        return -EIO;
+    }
+
     if (offset > file_size) {
         return -EINVAL;
     }
@@ -114,7 +122,7 @@ traverse(const char *path)
     char *pathcpy = strdup(path);
     if (!pathcpy) {
         fprintf(stderr, "Error: Could not allocate memory for traversal operation.\n");
-        return root;
+        return NULL;
     }
 
     /* Tokenize the path and follow each step of the way down. */
